@@ -1,7 +1,8 @@
 import numpy as np
-import scipy.signal as sgn
-import torch
-from utils import *
+from .utils import *
+
+output_stationary = np.array([[1, 0, 0], [0, 1, 0], [1, 1, 1] ])
+row_stationary = np.array([[0, -1, 1], [-1, 1, 0], [1, 1, 1] ])
 
 def printMatrixInIndex(A, index):
     assert len(A.shape) == 3
@@ -19,6 +20,31 @@ def printMatrixInIndex(A, index):
             print(A[:,:,i])
     else:
         assert False, "index cannot have value " + str(index) 
+
+def spaceTimeEquation(nu : np.ndarray, T : np.ndarray):
+    """
+        Args:
+            nu -> 3D iteration vector 
+            T -> space-time projection matrix
+        Returns:
+            eps -> a vector composed by [x, y, t] describing the position in space (x,y) and in time (t)
+            of the operation corresponding to the given iteration vector
+    """
+
+    return T @ nu
+
+def inverseSpaceTimeEquation(eps : np.ndarray, T : np.ndarray):
+    """
+        Args:
+            eps -> space-time vector containing [x,y,t]
+            T -> space-time projection matrix
+        Returns:
+            nu -> 3D iteration vector composed by [i, j, k]
+    """
+
+    Tinv = np.linalg.inv(T)
+    nu = Tinv @ eps
+    return nu
 
 def matmul(A, B, injection=None, projectionMatrix=None):
     ''' 
@@ -44,10 +70,11 @@ def matmul(A, B, injection=None, projectionMatrix=None):
         assert False, "Injection should be performed, but no space-time projection matrix has been given"
 
     if shouldInject:
-        T_inv = np.linalg.inv(projectionMatrix)
+        # T_inv = np.linalg.inv(projectionMatrix)
 
         s = np.array([ injection["x"], injection["y"], injection["t"] ])
-        nu = T_inv @ s
+        nu = inverseSpaceTimeEquation(s, projectionMatrix)
+        #nu = T_inv @ s
         print("nu is ")
         print(nu)
 
@@ -122,35 +149,4 @@ def convolution(A, B, N=-1):
     inj = {"x": 1, "y": 1, "t": 0}
 
     return matmul(B,A, projectionMatrix=pm, injection=inj)
-
-if __name__ == "__main__":
-    a = np.array([[1, 2], [3,4]])
-    b = np.array([[5,6], [7,8]])
-  
-    c = matmul(a,b)
-    print("expected output")
-    print(c)
-
-    C = np.matmul(a,b)
-    print("ground truth")
-    print(C)
-
-    a = np.array([[1,2,3], [4,5,6], [7,8,9]])
-    #a = np.ones((3,3))
-    b = np.array([[1,1],[1,1]])
-
-    print("Computing convolution between A:")
-    print(a)
-    print("and B:")
-    print(b)
-    
-    c = convolution(a,b)
-    print("expected")
-    print(c)
-
-    aT = torch.from_numpy(a).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
-    bT = torch.from_numpy(b).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
-    print("ground truth")
-    C = torch.nn.functional.conv2d(aT, bT)
-    print(C)
 
