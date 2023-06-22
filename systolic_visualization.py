@@ -1,9 +1,18 @@
 import pygame
-from systolic_injector import *
+from src.systolic_injector import *
+import visualization_utils as vu
+
+scaling = 3
 
 # Constants
-SQUARE_SIZE = 50
-SQUARE_PADDING = 30
+SQUARE_SIZE = 50 * scaling
+SQUARE_PADDING = 30 * scaling
+
+# Global variables
+HUD = None
+surface = None # This is for pygame to draw on
+font = None # For rendering text
+fontHUD = None
 
 def getTransformatedCoordinates(p : pygame.math.Vector2) -> pygame.math.Vector2:
     # Screen height and width
@@ -19,21 +28,40 @@ def getTransformatedCoordinates(p : pygame.math.Vector2) -> pygame.math.Vector2:
 
     return p + center - square_center_offset
 
-def drawPE(x, y, s):
+def drawPE(x, y, color):
     p = getTransformatedCoordinates( pygame.math.Vector2(x, y) )
     r = pygame.Rect(p.x, p.y, SQUARE_SIZE, SQUARE_SIZE)
-    pygame.draw.rect(s, "white", r)
+    pygame.draw.rect(surface, color, r)
+    
+    coord = font.render("(" + str(x) + "," + str(y) + ")", True, "black")
+    surface.blit( coord, (p.x+SQUARE_SIZE/2 - coord.get_width()/2, p.y) )
 
-def draw_stuff(surface): 
+
+def drawSystolicArray(color):
     N1 = 3
     N2 = 3
-    N3 = 3
+    N3 = 5
 
     for i in range(1, N1+1):
         for j in range(1, N2+1):
             for k in range(1, N3+1):
-                s = spaceTimeEquation([i,j,k], output_stationary)
-                drawPE(s[0], s[1], surface)
+                eps = np.array([i,j,k])
+                s = utils.space_time_equation(eps, ProjectionMatrices.row_stationary)
+                drawPE(s[0], s[1], color)
+
+def draw_stuff(): 
+    global ss
+
+    t = pygame.time.get_ticks()
+    if t - ss.last_time >= 1000:
+        ss.update_time(t)
+        ss.invert_color()
+
+    timeElapsed = fontHUD.render( str(ss.systolic_time), True, "white" )
+    HUD.blit(timeElapsed, (0, 0) )
+
+    drawSystolicArray(ss.color)
+
 
 if __name__ == "__main__":
     pygame.init()
@@ -45,10 +73,21 @@ if __name__ == "__main__":
     global WIDTH
     global HEIGHT
 
-    WIDTH = 800 * 2
-    HEIGHT = 600 * 2
+    WIDTH = 1280 * scaling # 800 * 2
+    HEIGHT = 800 * scaling # 600 * 2
+
+    HUD = pygame.Surface( (WIDTH, HEIGHT) )
+    hud_transparent_color = "green"
+    HUD.fill(hud_transparent_color)
+    HUD.set_colorkey(hud_transparent_color)
+    fontHUD = pygame.font.SysFont("Arial", 40)
+
     main_surface = pygame.Surface( (WIDTH, HEIGHT) )
     main_surface.fill("yellow")
+    font = pygame.font.SysFont("Arial", 15 * scaling)
+
+    global ss
+    ss = vu.systolic_state()
 
     x, y = ( (screen.get_width() - main_surface.get_width()) / 2, (screen.get_height() - main_surface.get_height()) / 2 )
     scale = 1
@@ -72,22 +111,15 @@ if __name__ == "__main__":
 
         screen.fill("purple")
         main_surface.fill("green")
+        HUD.fill(hud_transparent_color)
 
-
-        draw_stuff(main_surface)
+        surface = main_surface
+        draw_stuff()
 
         scaled_surface = pygame.transform.scale(main_surface, (WIDTH*scale, HEIGHT*scale) )
         screen.blit(scaled_surface, (x,y) )
 
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_w]:
-            y -= 1 * speed
-        elif keys[pygame.K_s]:
-            y += 1 * speed
-        elif keys[pygame.K_a]:
-            x -= 1 * speed
-        elif keys[pygame.K_d]:
-            x += 1 * speed
+        screen.blit(HUD, (0, 0) )
 
         mouse_btns = pygame.mouse.get_pressed()
         if mouse_btns[0] and not panning:
