@@ -1,5 +1,6 @@
 class Fault:
 
+    # TODO: implement this shit
     def __init__(self, parameters: dict):
         self.x = parameters["x"]  # This has to be an int!
         self.y = parameters["y"]  # This has to be an int!

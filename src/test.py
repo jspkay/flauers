@@ -38,8 +38,8 @@ if __name__ == "__main__":
 
     hw = SystolicArray(28, 28, 28, pm.output_stationary)
     h = []
-    transformed = lowerings.ExpensiveLowering(a, b)
-    result = hw.matmul(transformed.get_activation(), transformed.get_kernel(), h)
+    transformed = lowerings.ExpensiveLowering(a.shape, b.shape)
+    result = hw.matmul(transformed.lower_activation(a), transformed.lower_kernel(b), h)
     result = transformed.lift(result)
     print(result)
     print(type(h[0]))
