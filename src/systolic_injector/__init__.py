@@ -9,7 +9,7 @@ ProjectionMatrices = projection_matrices
 
 
 def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
-             lowering: lowerings.LoweringLifting = lowerings.SlimKernel,
+             lowering: lowerings.LowLif = lowerings.SlimKernel,
              N1=-1,
              N2=-1,
              N3=-1,  # TODO: maybe projection_matrix can have its own class 🤷
@@ -43,7 +43,7 @@ def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
     L = m * m + m
     print("L is ", L)
 
-    transformed = lowering(A, B)
+    transformed = lowering(A.shape, B.shape)
 
     if N1 == -1:
         N1 = transformed.activation_shape[0] + 1
@@ -53,16 +53,16 @@ def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
         N3 = transformed.kernel_shape[0] + 1
 
     hw = SystolicArray(N1, N2, N3, projection_matrix)
-    result = hw.matmul(transformed.get_activation(), transformed.get_kernel(), history)
+    result = hw.matmul(transformed.lower_activation(A), transformed.lower_kernel(B), history)
 
     return transformed.lift(result)
+
 
 def matmul(A, B, history: list = [],
            N1=-1,
            N2=-1,
            N3=-1,
-           projection_matrix = ProjectionMatrices.output_stationary) -> np.ndarray:
-
+           projection_matrix=ProjectionMatrices.output_stationary) -> np.ndarray:
     if N1 == -1:
         N1 = A.shape[0] + 1
     if N2 == -1:
