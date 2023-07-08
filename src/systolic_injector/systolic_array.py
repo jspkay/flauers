@@ -1,7 +1,7 @@
 import numpy as np
-from .fault_models import * # Contains the class Fault
-from . import lowerings
+from .fault_models import *  # Contains the class Fault
 import uuid
+
 
 class TransformedFault:
 
@@ -51,7 +51,7 @@ class SystolicArray:
         self.fault_list.pop(id)
         self.should_inject = self.fault_list.__len__() == 0
 
-    def matmul(self, A, B, history : list = []):
+    def matmul(self, A, B, history: list = []):
         """
         Performs the matrix multiplication between A and B.
         A must be size (ar, ac), B must have size (br, bc), with ac = br.
@@ -68,6 +68,9 @@ class SystolicArray:
         o : multiplication a * b
         """
 
+        # We only can do multiplication of 2D matrices!
+        assert len(A.shape) == 2 and len(B.shape) == 2, "matmul only accepts 2D matrices!!!"
+
         ar, ac = A.shape
         br, bc = B.shape
 
@@ -76,7 +79,7 @@ class SystolicArray:
 
         N1 = ar + 1
         N2 = bc + 1
-        N3 = br + 1  # same as ac
+        N3 = br + 1  # same as ac + 1
 
         # TODO: Figure out a way to implement folding (or tiling)!
         assert self.N1 >= N1
@@ -93,8 +96,6 @@ class SystolicArray:
         j = 0
         for i in range(1, N1):
             for k in range(1, N3):
-                ''' it's wrong here! You have to shift the matrix by one on the right,
-                not the left! '''
                 a_i = 1 if i == 0 else i
                 a_k = 1 if k == 0 else k
                 a[i, j, k] = A[a_i - 1, a_k - 1]
@@ -126,7 +127,7 @@ class SystolicArray:
 
                     c[i, j, k] = c[i, j, k - 1] + a[i, j - 1, k] * b[i - 1, j, k]
 
-        history.extend([a,b,c])
+        history.extend([a, b, c])
 
         C = c[1:, 1:, N3 - 1]
         return C

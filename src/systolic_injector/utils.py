@@ -1,7 +1,25 @@
 import numpy as np
 
+"""
+Definition of some utils functions
+"""
 
+# ###########Variables and constants
+
+# indexes for the shapes
+input_indexes = {
+    "CHANNELS": 0,
+    "HEIGHT": 1,
+    "WIDTH": 2,
+}
+
+
+# ########Functions
 def print_matrix_in_index(mat, index):
+    """
+    This function prints a 3D tensor, iterating over the dimension specified by index
+    """
+
     assert len(mat.shape) == 3
 
     a, b, c = mat.shape
