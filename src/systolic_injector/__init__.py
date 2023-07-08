@@ -9,7 +9,8 @@ ProjectionMatrices = projection_matrices
 
 
 def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
-             lowering: lowerings.LowLif = lowerings.SlimKernel,
+             # TODO: Use typing so that we can specify that lowering is an object from a SUBCLASS of LowLif, otherwise the type-check complains that we cannot instantiate with lowering
+             lowering: lowerings.LowLif = lowerings.ExpensiveLowering,
              N1=-1,
              N2=-1,
              N3=-1,  # TODO: maybe projection_matrix can have its own class 🤷
@@ -33,11 +34,15 @@ def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
     O : systolic-array wise injected convolution
     """
 
-    assert A.shape[1] == A.shape[2], "For now, only square matrices are available!"
-    assert B.shape[1] == B.shape[2], "For now, only square matrices are available!"
+    HEIGHT = utils.input_indexes["HEIGHT"]
+    WIDTH = utils.input_indexes["WIDTH"]
+    CHANNELS = utils.input_indexes["CHANNELS"]
 
-    n = A.shape[1]
-    m = B.shape[1]
+    assert A.shape[HEIGHT] == A.shape[WIDTH], "For now, only square matrices are available!"
+    assert B.shape[HEIGHT] == B.shape[WIDTH], "For now, only square matrices are available!"
+
+    n = A.shape[HEIGHT]
+    m = B.shape[HEIGHT]
     assert m < n, "Matrix b must be smaller than matrix a, invert the arguments!"
 
     L = m * m + m
@@ -45,12 +50,23 @@ def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
 
     transformed = lowering(A.shape, B.shape)
 
+    """
+    Very important NOTE: N1, N2 and N3 are parameters for the instantiation of the systolic array design. These params
+    correspond to the sizes of the matrices to multiply. Specifically, assuming C = A x B:
+        - N1 is the number of ROWS of matrix A (which will be the rows of matrix C),
+        - N2 is the number of COLUMNS of matrix B (which will be the columns of matrix C),
+        - N3 is the number of COLUMNS of matrix A and the number of ROWS of matrix B.
+    That is because we are gonna use the systolic array to perform matrix multiplication! 
+    Another minor thing is: the shape of the transformed lowerings are bi-dimensional, since we are doing matrix
+    multiplication, so we use the indexes defined in lowerings.py instead of the indexes defined in utils
+    """
+    out_height, out_width = lowerings.lowering_indexes.values()
     if N1 == -1:
-        N1 = transformed.activation_shape[0] + 1
+        N1 = transformed.lowered_activation_shape[ out_height ] + 1
     if N2 == -1:
-        N2 = transformed.kernel_shape[1] + 1
+        N2 = transformed.lowered_kernel_shape[ out_width ] + 1
     if N3 == -1:
-        N3 = transformed.kernel_shape[0] + 1
+        N3 = transformed.lowered_kernel_shape[ out_height ] + 1
 
     hw = SystolicArray(N1, N2, N3, projection_matrix)
     result = hw.matmul(transformed.lower_activation(A), transformed.lower_kernel(B), history)
