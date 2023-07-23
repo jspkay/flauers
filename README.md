@@ -1,4 +1,8 @@
-# Systolic injector
+Saffira
+---
+
+Systolic Array Framework for Fault Injection and Robust Accelerators
+
 
 The library resides into the systolic_injector directory.
 A simple test with a convolution and a matrix multiplication can be found in test.py.

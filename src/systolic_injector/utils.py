@@ -6,12 +6,25 @@ Definition of some utils functions
 
 # ###########Variables and constants
 
-# indexes for the shapes
-input_indexes = {
-    "CHANNELS": 0,
-    "HEIGHT": 1,
-    "WIDTH": 2,
-}
+# indexes for the shapes depending on the LowLif type
+input_indexes_mapping = [
+    # For more information on these indexes, check the class LowLif
+    {  # Single LowLif Type
+        "HEIGHT": 0,
+        "WIDTH": 1,
+    },
+    {  # Channeled LowLif Type
+        "CHANNEL": 0,
+        "HEIGHT": 1,
+        "WIDTH": 2,
+    },
+    {  # Parallel LowLif Type
+        "BATCH": 0,
+        "CHANNEL": 1,
+        "HEIGHT": 2,
+        "WIDTH": 3,
+    },
+]
 
 
 # ########Functions
