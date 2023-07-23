@@ -3,14 +3,47 @@ from . import utils
 from . import lowerings
 from . import systolic_array
 from . import projection_matrices
+from typing import overload
+import logging
 
 SystolicArray = systolic_array.SystolicArray
 ProjectionMatrices = projection_matrices
 
+logger = logging.getLogger(__name__)
 
-def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
+def convolve_with_array(A: np.ndarray, B: np.ndarray,
+             lowering: lowerings.LoLif = lowerings.S_Im2Col,
+             array: SystolicArray = SystolicArray(10, 10, 10, projection_matrices.output_stationary)):
+    """
+    Perform convolution between two matrices a and b using a systolic array, such that C = A * B
+
+    Parameters
+    ---
+    A : input matrix
+    B : filter on the input matrix
+    history : this parameter is used to report the iterations over i, j and k of the multiplication
+    lowering : this object defines the lowering/lifting strategy to implement the convolution
+    array: SystolicArray object to be used for the convolution
+
+    Returns
+    ---
+    O : systolic-array wise injected convolution
+    """
+
+    out_height, out_width = lowerings.lowered_indices.values()
+
+    transformed = lowering(A.shape, B.shape)
+
+    low_A = transformed.lower_activation(A)
+    low_B = transformed.lower_kernel(B)
+    result = array.matmul(low_A, low_B)
+
+    return transformed.lift(result)
+
+
+def convolve(A: np.ndarray, B: np.ndarray,
              # TODO: Use typing so that we can specify that lowering is an object from a SUBCLASS of LowLif, otherwise the type-check complains that we cannot instantiate with lowering
-             lowering: lowerings.LowLif = lowerings.ExpensiveLowering,
+             lowering: lowerings.LoLif = lowerings.S_Im2Col,
              N1=-1,
              N2=-1,
              N3=-1,  # TODO: maybe projection_matrix can have its own class 🤷
@@ -34,19 +67,7 @@ def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
     O : systolic-array wise injected convolution
     """
 
-    HEIGHT = utils.input_indexes["HEIGHT"]
-    WIDTH = utils.input_indexes["WIDTH"]
-    CHANNELS = utils.input_indexes["CHANNELS"]
-
-    assert A.shape[HEIGHT] == A.shape[WIDTH], "For now, only square matrices are available!"
-    assert B.shape[HEIGHT] == B.shape[WIDTH], "For now, only square matrices are available!"
-
-    n = A.shape[HEIGHT]
-    m = B.shape[HEIGHT]
-    assert m < n, "Matrix b must be smaller than matrix a, invert the arguments!"
-
-    L = m * m + m
-    print("L is ", L)
+    logging.info(f"[convolve] the convolution function has started")
 
     transformed = lowering(A.shape, B.shape)
 
@@ -60,7 +81,7 @@ def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
     Another minor thing is: the shape of the transformed lowerings are bi-dimensional, since we are doing matrix
     multiplication, so we use the indexes defined in lowerings.py instead of the indexes defined in utils
     """
-    out_height, out_width = lowerings.lowering_indexes.values()
+    out_height, out_width = lowerings.lowered_indices.values()
     if N1 == -1:
         N1 = transformed.lowered_activation_shape[ out_height ] + 1
     if N2 == -1:
@@ -69,12 +90,15 @@ def convolve(A: np.ndarray, B: np.ndarray, history: list = [],
         N3 = transformed.lowered_kernel_shape[ out_height ] + 1
 
     hw = SystolicArray(N1, N2, N3, projection_matrix)
-    result = hw.matmul(transformed.lower_activation(A), transformed.lower_kernel(B), history)
+
+    low_A = transformed.lower_activation(A)
+    low_B = transformed.lower_kernel(B)
+    result = hw.matmul(low_A, low_B)
 
     return transformed.lift(result)
 
 
-def matmul(A, B, history: list = [],
+def matmul(A, B,
            N1=-1,
            N2=-1,
            N3=-1,
@@ -86,9 +110,5 @@ def matmul(A, B, history: list = [],
     if N3 == -1:
         N3 = B.shape[0] + 1
 
-    print(N1)
-    print(N2)
-    print(N3)
-
     hw = SystolicArray(N1, N2, N3, projection_matrix)
-    return hw.matmul(A, B, history)
+    return hw.matmul(A, B)

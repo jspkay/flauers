@@ -30,7 +30,7 @@ def im2col(x, window_size, stride = 1):
     output_height = int((x.shape[0] - window_size)/stride + 1)
     output_height = output_height * output_height
     
-    x_newview = np.lib.stride_tricks.as_strided(x,view_shape,x.strides*2)
+    x_newview = np.lib.stride_tricks.as_strided(x, view_shape, x.strides*2)
     output = x_newview.reshape((output_height,output_width))
     
     return output

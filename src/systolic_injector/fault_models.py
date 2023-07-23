@@ -4,7 +4,7 @@ class Fault:
     def __init__(self, parameters: dict):
         self.x = parameters["x"]  # This has to be an int!
         self.y = parameters["y"]  # This has to be an int!
-        self.t = parameters["t"]  # This should be a string, so that it is possibile to parse it
+        self.t = parameters["t"]  # This should be a string, so that it is possible to parse it
         # Some examples for the time:
         # ">4" -> means every CC after the 4 (excluded)
         # ">=4" -> every CC after the 4 (included)
