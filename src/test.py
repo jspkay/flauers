@@ -1,9 +1,9 @@
 import numpy as np
 from scipy.sparse import bsr_array
 
-import systolic_injector as si
-from systolic_injector import systolic_array as sa
-from systolic_injector import projection_matrices as pm
+import saffira as si
+from saffira import systolic_array as sa
+from saffira import projection_matrices as pm
 import torch
 import unittest
 import logging
@@ -57,7 +57,6 @@ def test_convolve_with_explicit_instantiation():
 
     # Instantiate the systolic array with physical parameters N1, N2, N3
     hw = si.SystolicArray(28, 28, 28, pm.output_stationary)
-    h = []  # Prepare history
 
     print("######## Slim Kernel!")
     transformation = si.lowerings.C_SlimKernel(a.shape, b.shape)  # Define the lowering
@@ -78,7 +77,7 @@ def test_convolve_with_explicit_instantiation():
     print(transformation.lower_kernel(b_im2col))
 
     # Compute the matrix multiplication between the lowered inputs
-    c_sa = hw.matmul(transformation.lower_activation(a_im2col), transformation.lower_kernel(b_im2col), h)
+    c_sa = hw.matmul(transformation.lower_activation(a_im2col), transformation.lower_kernel(b_im2col))
     c_sa = transformation.lift(c_sa)  # lift the result
     print("Expected: ")
     print(c_sa)
@@ -101,7 +100,6 @@ def test_convolution_with_im2col():
 
     # Instantiate the systolic array with physical parameters N1, N2, N3
     hw = si.SystolicArray(28, 28, 28, pm.output_stationary)
-    h = []  # Prepare history
 
     transformation = si.lowerings.S_Im2Col(a.shape, b.shape)  # Define the lowering
 
@@ -111,7 +109,7 @@ def test_convolution_with_im2col():
     print(transformation.lower_kernel(b))
 
     # Perform the actual multiplication
-    c_sa = hw.matmul(transformation.lower_activation(a), transformation.lower_kernel(b), h)
+    c_sa = hw.matmul(transformation.lower_activation(a), transformation.lower_kernel(b))
     c_sa = transformation.lift(c_sa)  # lift the result
     print("Expected: ")
     print(c_sa)

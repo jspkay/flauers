@@ -1,5 +1,5 @@
 import pygame
-from src.systolic_injector import *
+from src.saffira import *
 import visualization_utils as vu
 
 scaling = 3
