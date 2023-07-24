@@ -12,8 +12,8 @@ ProjectionMatrices = projection_matrices
 logger = logging.getLogger(__name__)
 
 def convolve_with_array(A: np.ndarray, B: np.ndarray,
-             lowering: lowerings.LoLif = lowerings.S_Im2Col,
-             array: SystolicArray = SystolicArray(10, 10, 10, projection_matrices.output_stationary)):
+             array: SystolicArray,
+             lowering: lowerings.LoLif = lowerings.S_Im2Col,):
     """
     Perform convolution between two matrices a and b using a systolic array, such that C = A * B
 
@@ -21,9 +21,8 @@ def convolve_with_array(A: np.ndarray, B: np.ndarray,
     ---
     A : input matrix
     B : filter on the input matrix
-    history : this parameter is used to report the iterations over i, j and k of the multiplication
-    lowering : this object defines the lowering/lifting strategy to implement the convolution
     array: SystolicArray object to be used for the convolution
+    lowering : this object defines the lowering/lifting strategy to implement the convolution
 
     Returns
     ---
