@@ -14,6 +14,7 @@ surface = None # This is for pygame to draw on
 font = None # For rendering text
 fontHUD = None
 
+
 def getTransformatedCoordinates(p : pygame.math.Vector2) -> pygame.math.Vector2:
     # Screen height and width
     global WIDTH
@@ -46,7 +47,7 @@ def drawSystolicArray(color):
         for j in range(1, N2+1):
             for k in range(1, N3+1):
                 eps = np.array([i,j,k])
-                s = utils.space_time_equation(eps, ProjectionMatrices.row_stationary)
+                s = utils.space_time_equation(eps, ProjectionMatrices.output_stationary)
                 drawPE(s[0], s[1], color)
 
 def draw_stuff(): 
