@@ -5,15 +5,15 @@ import logging
 from . import utils
 from .utils import LineType
 import bitarray
-
-class InjectionError(Exception):
-
-    def __init__(self, message):
-        super().__init__(self, message)
+from .exceptions import *
 
 class SystolicArray:
 
-    def __init__(self, n1: int, n2: int, n3: int, T: np.ndarray, dtype: np.dtype = np.dtype(np.int8)):
+    def __init__(self,
+                 n1: int, n2: int, n3: int,
+                 T: np.ndarray,
+                 dtype: np.dtype = np.dtype(np.int8)
+                 ):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
 
@@ -33,7 +33,10 @@ class SystolicArray:
         self.dtype = dtype
 
         # Explicit dtype for accumulation without overflow
-        self.mac_dtype = np.dtype(dtype.kind + str(dtype.itemsize * 4))
+        if dtype.kind == "i":
+            self.mac_dtype = np.dtype(dtype.kind + str(dtype.itemsize * 4))
+        else:
+            self.mac_dtype = dtype
 
 
         logging.info(f"[SystolicArray] N1: {n1}, N2: {n2}, N3: {n3}")
@@ -130,8 +133,32 @@ class SystolicArray:
         """
         logging.info(f"[SystolicArray] processing matrix multiplication...")
 
-        A = np.array(A, dtype=self.dtype)
-        B = np.array(B, dtype=self.dtype)
+        # Safe casting to avoid overflow
+        if not isinstance(A, np.ndarray):
+            logging.warning(f"[SystolicArray] Matrix A is not instance of numpy.ndarray. This may cause problems")
+        if not isinstance(B, np.ndarray):
+            logging.warning(f"[SystolicArray] Matrix B is not instance of numpy.ndarray. This may cause problems")
+
+        # A = A.astype(self.dtype, casting="safe")
+        # Would be nice to use the astype method,
+        # but it doesn't check dynamically whether the values fit in the new type
+        A_np = np.array(A, dtype=self.dtype)
+        if not (A_np == A).all():
+            raise CastingError(
+                f"Couldn't convert A from {type(A)} to {self.dtype} because some values are greater than admissible.\n"
+                f"The max value is: {np.max(A)}. Have you considered signed and unsigned types?\n"
+                f"Matrix A was: \n{A}")
+        # B = B.astype(self.dtype, casting="safe")
+        B_np = np.array(B)
+        if not (B_np == B).all():
+            raise CastingError(
+                f"Couldn't convert B from {type(B)} to {self.dtype} because some values are greater than admissible."
+                f"Matrix B was: \n{B}")
+
+        A = A_np
+        B = B_np
+        del A_np
+        del B_np
 
         logging.info(f"[SystolicArray] checking all the requirements")
         # We only can do multiplication of 2D matrices!
@@ -277,10 +304,9 @@ class SystolicArray:
                                 logging.debug(f"[SystolicArray] injected value c[{i, j, k}] = {c[i, j, k]}")
 
                     c[i, j, k] = ( c[i, j, k - 1] +
-                                    np.array(a[i, j - 1, k], dtype=self.mac_dtype) *
-                                    np.array(b[i - 1, j, k], dtype=self.mac_dtype)
-                                    )
-                    print(c[i, j, k])
+                                   a[i, j - 1, k].astype(dtype=self.mac_dtype, casting="safe") *
+                                   b[i - 1, j, k].astype(dtype=self.mac_dtype, casting="safe")
+                                   )
 
         """ for j in range(N1-1):
             r = a[:, j, :] == a[:, j-1, :]
@@ -290,9 +316,6 @@ class SystolicArray:
 
         # c = c[:,:,0:N3] + a[i, j - 1, k] * b[i - 1, j, k]
         logging.info(f"[SystolicArray] computation done")
-
-        # print(("[SystolicArray] collecting history"))
-        # history.extend([a, b, c])
 
         C = c[1:, 1:, N3 - 1]
 

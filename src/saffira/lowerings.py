@@ -211,9 +211,12 @@ class S_Im2Col(LoLif):
         logging.info(f"[S_Im2Col] starting lowering_activation")
         _check_tensor_against_shape(activation, self.activation_shape)
 
-        activation = np.array(activation)  # Convert to numpy array
+        if not isinstance(activation, np.ndarray):
+            logging.warning(f"[S_Im2Col] the argument object activation is not instance of numpy.ndarray. This can "
+                            f"cause problems with the computation.")
+            activation = np.array(activation)  # Convert to numpy array
 
-        result = np.zeros(self.lowered_activation_shape)  # Prepare output
+        result = np.zeros(self.lowered_activation_shape, dtype=activation.dtype)  # Prepare output
 
         for r in range(self.output_size):
             result[r, :] = activation[r:r+self.kernel_size, :].flatten("F")
@@ -229,10 +232,13 @@ class S_Im2Col(LoLif):
     def lower_kernel(self, kernel):
         # Stack all unfolded kernels row by row
 
-        kernel = np.array(kernel)
+        if not isinstance(kernel, np.ndarray):
+            logging.warning(f"[S_Im2Col] the argument object kernel is not instance of numpy.ndarray. This can "
+                            f"cause problems with the computation.")
+            kernel = np.array(kernel)
 
         logging.info(f"[S_Im2Col] starting lowering_kernel")
-        output = np.zeros(self.lowered_kernel_shape)
+        output = np.zeros(self.lowered_kernel_shape, dtype=kernel.dtype)
         col = kernel.flatten("F")
         l = self.kernel_size
         m = len(col)

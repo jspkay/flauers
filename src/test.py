@@ -8,9 +8,9 @@ import torch
 import unittest
 import logging
 
+#logging.basicConfig(level=logging.DEBUG)
 #logging.basicConfig(level=logging.INFO)
-# logging.basicConfig(level=logging.DEBUG)
-logging.basicConfig(level=logging.CRITICAL + 1)
+logging.basicConfig(level=logging.WARNING)
 
 
 def test_matmul():
@@ -148,35 +148,35 @@ def test_convolve_with_array():
 
 
 def test_weird_test():
-    a = np.array([[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                  [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                  [0., 27113., 27404., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                  [0., 35910., 29883., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                  [0., 9691., 5909., 279., 5322., 0., 0., 24430., 17666., 0., 0., 0.],
-                  [0., 0., 0., 81., 411., 0., 18986., 38559., 13138., 0., 0., 0.],
-                  [0., 0., 0., 0., 0., 0., 39196., 40244., 0., 0., 0., 0.],
-                  [0., 0., 0., 0., 0., 16462., 36795., 8109., 0., 0., 0., 0.],
-                  [0., 0., 0., 0., 10893., 38902., 31807., 0., 0., 0., 0., 0.],
-                  [0., 0., 0., 783., 33197., 37076., 0., 0., 0., 0., 0., 0.],
-                  [0., 0., 0., 19453., 39297., 16767., 0., 0., 0., 0., 0., 0.],
-                  [0., 0., 0., 46700., 51064., 0., 0., 0., 0., 0., 0., 0.]])
-    b = np.array([[-102., -36., 17., 17., -21.],
-                  [3., -127., -25., -42., -7.],
-                  [64., -30., -48., -73., -70.],
-                  [63., 21., 87., 43., -6.],
-                  [5., -62., -28., -38., 1.]])
+    a = np.array([[0.,     0.,     0.,     0.,     0.,     0.,     0.,     0.,     0., 0., 0., 0.],
+                  [0.,     0.,     0.,     0.,     0.,     0.,     0.,     0.,     0., 0., 0., 0.],
+                  [0., 27113., 27404.,     0.,     0.,     0.,     0.,     0.,     0., 0., 0., 0.],
+                  [0., 35910., 29883.,     0.,     0.,     0.,     0.,     0.,     0., 0., 0., 0.],
+                  [0.,  9691.,  5909.,   279.,  5322.,     0.,     0., 24430., 17666., 0., 0., 0.],
+                  [0.,     0.,     0.,    81.,   411.,     0., 18986., 38559., 13138., 0., 0., 0.],
+                  [0.,     0.,     0.,     0.,     0.,     0., 39196., 40244.,     0., 0., 0., 0.],
+                  [0.,     0.,     0.,     0.,     0., 16462., 36795.,  8109.,     0., 0., 0., 0.],
+                  [0.,     0.,     0.,     0., 10893., 38902., 31807.,     0.,     0., 0., 0., 0.],
+                  [0.,     0.,     0.,   783., 33197., 37076.,     0.,     0.,     0., 0., 0., 0.],
+                  [0.,     0.,     0., 19453., 39297., 16767.,     0.,     0.,     0., 0., 0., 0.],
+                  [0.,     0.,     0., 46700., 51064.,     0.,     0.,     0.,     0., 0., 0., 0.]])
+    b = np.array([[-102.,  -36.,  17.,  17., -21.],
+                  [   3., -127., -25., -42.,  -7.],
+                  [  64.,  -30., -48., -73., -70.],
+                  [  63.,   21.,  87.,  43.,  -6.],
+                  [   5.,  -62., -28., -38.,   1.]])
 
     array = si.SystolicArray(100, 100, 150, si.projection_matrices.output_stationary)
     c_sa = si.convolve_with_array(a, b, lowering=si.lowerings.S_Im2Col, array=array)
-    print(c_sa)
-    print(c_sa.dtype)
+    # print(c_sa)
+    # print(c_sa.dtype)
 
     aT = torch.from_numpy(a).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
     bT = torch.from_numpy(b).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
 
     c_torch = torch.nn.functional.conv2d(aT, bT)
 
-    print(c_torch)
+    # print(c_torch)
 
     return c_sa == np.array(c_torch)
 
@@ -225,8 +225,7 @@ class Tests(unittest.TestCase):
         self.assertTrue(result.all())
 
     def test_weird_test(self):
-        result = test_weird_test()
-        self.assertTrue(result.all())
+        self.assertRaises(si.exceptions.CastingError, test_weird_test)
 
     def test_injection_simple(self):
         test_injection_simple()
