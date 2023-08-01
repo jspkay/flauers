@@ -9,8 +9,8 @@ import unittest
 import logging
 
 #logging.basicConfig(level=logging.INFO)
-logging.basicConfig(level=logging.DEBUG)
-#logging.basicConfig(level=logging.CRITICAL + 1)
+# logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.CRITICAL + 1)
 
 
 def test_matmul():
@@ -169,6 +169,7 @@ def test_weird_test():
     array = si.SystolicArray(100, 100, 150, si.projection_matrices.output_stationary)
     c_sa = si.convolve_with_array(a, b, lowering=si.lowerings.S_Im2Col, array=array)
     print(c_sa)
+    print(c_sa.dtype)
 
     aT = torch.from_numpy(a).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
     bT = torch.from_numpy(b).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
