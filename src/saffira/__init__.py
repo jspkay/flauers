@@ -3,6 +3,7 @@ from . import utils
 from . import lowerings
 from . import systolic_array
 from . import projection_matrices
+from . import fault_models
 from typing import overload
 import logging
 

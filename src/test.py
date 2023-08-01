@@ -8,7 +8,10 @@ import torch
 import unittest
 import logging
 
-logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.CRITICAL + 1)
+
 
 def test_matmul():
     print("Running test_matmul")
@@ -123,6 +126,7 @@ def test_convolution_with_im2col():
 
     return c_sa == np.array(c_torch)
 
+
 def test_convolve_with_array():
     print("Running test_convolve_with_array")
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
@@ -142,24 +146,25 @@ def test_convolve_with_array():
 
     return c_sa == np.array(c_torch)
 
-def weird_test():
-    a = np.array( [[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                 [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                 [0., 27113., 27404., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                 [0., 35910., 29883., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                 [0., 9691., 5909., 279., 5322., 0., 0., 24430., 17666., 0., 0., 0.],
-                 [0., 0., 0., 81., 411., 0., 18986., 38559., 13138., 0., 0., 0.],
-                 [0., 0., 0., 0., 0., 0., 39196., 40244., 0., 0., 0., 0.],
-                 [0., 0., 0., 0., 0., 16462., 36795., 8109., 0., 0., 0., 0.],
-                 [0., 0., 0., 0., 10893., 38902., 31807., 0., 0., 0., 0., 0.],
-                 [0., 0., 0., 783., 33197., 37076., 0., 0., 0., 0., 0., 0.],
-                 [0., 0., 0., 19453., 39297., 16767., 0., 0., 0., 0., 0., 0.],
-                 [0., 0., 0., 46700., 51064., 0., 0., 0., 0., 0., 0., 0.]] )
-    b = np.array([[-102.,  -36.,   17.,   17.,  -21.],
-                [   3., -127.,  -25.,  -42.,   -7.],
-                [  64.,  -30.,  -48.,  -73.,  -70.],
-                [  63.,   21.,   87.,   43.,   -6.],
-                [   5.,  -62.,  -28.,  -38.,    1.]])
+
+def test_weird_test():
+    a = np.array([[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                  [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                  [0., 27113., 27404., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                  [0., 35910., 29883., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                  [0., 9691., 5909., 279., 5322., 0., 0., 24430., 17666., 0., 0., 0.],
+                  [0., 0., 0., 81., 411., 0., 18986., 38559., 13138., 0., 0., 0.],
+                  [0., 0., 0., 0., 0., 0., 39196., 40244., 0., 0., 0., 0.],
+                  [0., 0., 0., 0., 0., 16462., 36795., 8109., 0., 0., 0., 0.],
+                  [0., 0., 0., 0., 10893., 38902., 31807., 0., 0., 0., 0., 0.],
+                  [0., 0., 0., 783., 33197., 37076., 0., 0., 0., 0., 0., 0.],
+                  [0., 0., 0., 19453., 39297., 16767., 0., 0., 0., 0., 0., 0.],
+                  [0., 0., 0., 46700., 51064., 0., 0., 0., 0., 0., 0., 0.]])
+    b = np.array([[-102., -36., 17., 17., -21.],
+                  [3., -127., -25., -42., -7.],
+                  [64., -30., -48., -73., -70.],
+                  [63., 21., 87., 43., -6.],
+                  [5., -62., -28., -38., 1.]])
 
     array = si.SystolicArray(100, 100, 150, si.projection_matrices.output_stationary)
     c_sa = si.convolve_with_array(a, b, lowering=si.lowerings.S_Im2Col, array=array)
@@ -173,6 +178,27 @@ def weird_test():
     print(c_torch)
 
     return c_sa == np.array(c_torch)
+
+
+def test_injection_simple():
+    print("Running injection_simple")
+    a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    # b = np.ones((2,2))
+    b = np.array([[1, 2], [3, 4]])
+
+    array = si.SystolicArray(10, 10, 10, si.projection_matrices.row_stationary, dtype=np.dtype(np.int8) )
+    f = si.fault_models.StuckAt("a", x=1, y=1, bit=0, polarity=0, msb="last")
+    array.add_fault(f)
+    c_sa = si.convolve_with_array(a, b, lowering=si.lowerings.S_Im2Col, array=array)
+
+    aT = torch.from_numpy(a).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
+    bT = torch.from_numpy(b).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
+
+    c_torch = torch.nn.functional.conv2d(aT, bT)
+
+    print(c_sa)
+    print(c_torch)
+    print(c_sa == np.array(c_torch) )
 
 
 class Tests(unittest.TestCase):
@@ -197,13 +223,17 @@ class Tests(unittest.TestCase):
         result = test_convolve_with_array()
         self.assertTrue(result.all())
 
-    def weird_test(self):
-        result = weird_test()
+    def test_weird_test(self):
+        result = test_weird_test()
         self.assertTrue(result.all())
+
+    def test_injection_simple(self):
+        test_injection_simple()
+        self.assertTrue(True)
 
 
 if __name__ == "__main__":
-    weird_test()
+    test_injection_simple()
     exit(0)
 
     result = test_matmul()

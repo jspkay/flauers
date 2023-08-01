@@ -112,7 +112,7 @@ class LoLif:  # Lowering-Lifting class
         _check_shape(activation_shape, lolif_type)
         _check_shape(kernel_shape, lolif_type)
 
-        logging.info(f"[LoLif super-class] setting type to {lolif_type.name}")
+        logging.debug(f"[LoLif super-class] setting type to {lolif_type.name}")
         self._set_indices(lolif_type)
 
         if activation_shape[self.HEIGHT] <= kernel_shape[self.HEIGHT]:
@@ -129,20 +129,20 @@ class LoLif:  # Lowering-Lifting class
         self.kernel_size = kernel_shape[self.HEIGHT] # If the activation is 3x3, then this variable will be 3
         self.output_size = self.activation_size - self.kernel_size + 1
 
-        logging.info(f"[LowLif super-class] shapes: "
+        logging.debug(f"[LowLif super-class] shapes: "
                      f"\n\tactivation_shape {self.activation_shape}"
                      f"\n\tkernel_shape {self.kernel_shape}")
-        logging.info(f"[LowLif super-class] number of batches: {self.number_of_batches}, "
+        logging.debug(f"[LowLif super-class] number of batches: {self.number_of_batches}, "
                      f"number of channels: {self.number_of_channels}")
-        logging.info(f"[LowLif super-class] activation_size: {self.activation_size}, kernel_size: {self.kernel_size}")
+        logging.debug(f"[LowLif super-class] activation_size: {self.activation_size}, kernel_size: {self.kernel_size}")
 
         self.stride_x = stride_x
         self.stride_y = stride_y
-        logging.info(f"[LowLif super-class] stride was set to {self.stride_y, self.stride_x}")
+        logging.debug(f"[LowLif super-class] stride was set to {self.stride_y, self.stride_x}")
 
         # The output shape contains the processing for every batch
         self.lifted_output_shape = (self.output_size, self.output_size)
-        logging.info(f"[LowLif super-class] output shape for a single output is {self.lifted_output_shape}.")
+        logging.debug(f"[LowLif super-class] output shape for a single output is {self.lifted_output_shape}.")
 
         logging.info(f"[LoLif super-class] initialization done")
 
@@ -201,7 +201,7 @@ class S_Im2Col(LoLif):
         self.lowered_kernel_shape = (m, self.output_size)
         self.lifted_output_shape = (self.output_size, self.output_size)
 
-        logging.info(f"[S_Im2Col] shapes report\n\tlowered_activation: {self.lowered_activation_shape}"
+        logging.debug(f"[S_Im2Col] shapes report\n\tlowered_activation: {self.lowered_activation_shape}"
                      f"\n\tlowered_kernel_shape: {self.lowered_kernel_shape}"
                      f"\n\tlifted_output_shape: {self.lifted_output_shape}")
 
@@ -218,7 +218,7 @@ class S_Im2Col(LoLif):
         for r in range(self.output_size):
             result[r, :] = activation[r:r+self.kernel_size, :].flatten("F")
 
-        logging.info(f"lowered_kernel: \n{result}")
+        logging.debug(f"lowered_activation: \n{result}")
 
         logging.info(f"[S_Im2Col] lowering_activation done")
 
@@ -242,7 +242,7 @@ class S_Im2Col(LoLif):
 
         del col, l, m, kernel
 
-        logging.info(f"lowered_kernel: \n{output}")
+        logging.debug(f"lowered_kernel: \n{output}")
 
         logging.info(f"[S_Im2Col] lowering_kernel done")
         return output

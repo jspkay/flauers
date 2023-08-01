@@ -1,10 +1,11 @@
 import numpy as np
+from enum import Enum
 
 """
 Definition of some utils functions
 """
 
-# ###########Variables and constants
+# ########### Constants and types
 
 # indexes for the shapes depending on the LowLif type
 input_indexes_mapping = [
@@ -26,6 +27,8 @@ input_indexes_mapping = [
     },
 ]
 
+# LineType = Enum("LineType", ["a", "b", "c"])
+LineType = Enum("LineType", ["b", "a", "c"])
 
 # ########Functions
 def print_matrix_in_index(mat, index):
@@ -75,3 +78,27 @@ def inverse_space_time_equation(eps: np.ndarray, t: np.ndarray):
     t_inv = np.linalg.inv(t)
     nu = t_inv @ eps
     return nu
+
+def is_comprised(
+        nu: list[int, int, int],
+        nu_start: list[int, int, int],
+        nu_stop: list[int, int, int]) -> bool:
+    """
+    Checks whether nu is comprised between nu_start and nu_stop, i.e. for each component i the following
+    relationship holds:
+
+    nu_start(i) <= nu(i) <= nu_stop(i)
+
+        Args:
+            nu -> iteration vector to check
+            nu_start -> lower bound (included)
+            nu_stop -> upper bound (included)
+
+        Returns:
+            o -> it is True when nu_start <= nu <= nu_stop, otherwise False
+    """
+
+    for i in range(len(nu)):
+        if nu[i] < nu_start[i] or nu[i] > nu_stop[i]:
+            return False
+    return True
