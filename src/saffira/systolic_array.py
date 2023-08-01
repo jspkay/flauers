@@ -13,7 +13,7 @@ class InjectionError(Exception):
 
 class SystolicArray:
 
-    def __init__(self, n1: int, n2: int, n3: int, T: np.ndarray, dtype: np.dtype = np.int8):
+    def __init__(self, n1: int, n2: int, n3: int, T: np.ndarray, dtype: np.dtype = np.dtype(np.int8)):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
 
@@ -161,7 +161,6 @@ class SystolicArray:
         a = np.zeros((N1, N2, N3), dtype=self.dtype)
         b = np.zeros((N1, N2, N3), dtype=self.dtype)
         c = np.zeros((N1, N2, N3), dtype=self.mac_dtype)
-        print(a.shape)
 
         # input operations
         logging.debug(f"[SystolicArray] performing input operations...")
@@ -173,7 +172,6 @@ class SystolicArray:
                 a[i, j, k] = A[a_i - 1, a_k - 1]
                 # REMEMBER: although we are initializing the whole array, it doesn't make sense (for our mathematical
                 # framework) to talk about a[i, j, k] when either i == 0 or k == 0
-        utils.print_matrix_in_index(a, 1)
 
         if self.should_inject:
             logging.debug(f"[SystolicArray] injecting line a input values")
@@ -199,7 +197,6 @@ class SystolicArray:
                 # REMEMBER: as previously stated for a, it doesn't make sense (for our mathematical
                 # framework) to talk about b[i, j, k] when either j == 0 or k == 0
 
-        utils.print_matrix_in_index(a, 1)
         # exit(0)
 
         logging.info(f"[SystolicArray] data structures ready")
@@ -279,7 +276,11 @@ class SystolicArray:
 
                                 logging.debug(f"[SystolicArray] injected value c[{i, j, k}] = {c[i, j, k]}")
 
-                    c[i, j, k] = c[i, j, k - 1] + a[i, j - 1, k] * b[i - 1, j, k]
+                    c[i, j, k] = ( c[i, j, k - 1] +
+                                    np.array(a[i, j - 1, k], dtype=self.mac_dtype) *
+                                    np.array(b[i - 1, j, k], dtype=self.mac_dtype)
+                                    )
+                    print(c[i, j, k])
 
         """ for j in range(N1-1):
             r = a[:, j, :] == a[:, j-1, :]
