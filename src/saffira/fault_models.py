@@ -6,10 +6,14 @@ from .utils import LineType
 
 class Fault:
     # Intrinsic parameters of a fault
-    x = None
-    y = None
-    t_start = None
-    t_stop = None
+    line = None # (LineType) Injecting a, b or c registers
+    x = None # (int) x position in space
+    y = None # (int) y position in space
+    t_start = None # (int) starting time of the action of the fault
+    t_stop = None # (int) stop time of the action of the fault
+    should_reverse_bits = None # (bool) This parameter is used to control to inject either the MSB or the LSB. It's
+                               # connected to the parameters msb of the contructor
+    bit = None # (int) which bit to inject
 
     # Iteration vectors bounds for actual injection. Computed in self.transform
     iteration_start = [None]*3
@@ -33,7 +37,8 @@ class Fault:
                  bit: int,
                  polarity: int,
                  msb: str = "first",
-                 mode: str = "input"):
+                 mode: str = "input"
+                 ):
         """
         This class defines a fault occuring in the systolic array!
 
@@ -78,35 +83,6 @@ class Fault:
         self.mode = mode
 
         logging.debug(f"[Fault] bit: {bit}, polarity: {polarity}, msb: {msb}")
-
-    def transform(self, transformation_matrix):
-        logging.debug(f"[Fault] starting transformation of fault")
-        t_inv = np.linalg.inv(transformation_matrix)  # Compute the inverse transformation
-        s_start = np.array([self.x, self.y, self.t_start])  # start time
-        s_stop = np.array([self.x, self.y, self.t_stop])  # until stop time
-
-        # In general, we need only two nu vectors, to take into account every time t such that t_start < t < t_stop
-        logging.debug(f"[Fault] transforming from s_start {s_start}")
-        nu = t_inv @ s_start
-        for i in range(3):
-            self.iteration_start[i] = int(nu[i])
-        if self.mode == "input": # TODO Check whethter self.mode=="output" is correctly handled
-            self.iteration_start[self.line.value-1] -= 1
-        logging.debug(f"[Fault] the transformed value is {self.iteration_start}")
-
-        logging.debug(f"[Fault] transforming from s_stop {s_stop}")
-        nu = t_inv @ s_stop
-        for i in range(3):
-            self.iteration_stop[i] = int(nu[i])
-        if self.mode == "input":
-            self.iteration_stop[self.line.value-1] -= 1
-        logging.debug(f"[Fault] the transformed value is {self.iteration_stop}")
-
-        logging.debug(f"[TransformedFault] t_inv: \n{t_inv}")
-
-        logging.debug(
-            f"[Fault] The injection of PE {self.x, self.y} between times {self.t_start} and {self.t_stop} "
-            f"will happen between {self.iteration_start} and {self.iteration_stop}")
 
     def __repr__(self):
         str = f"Fault @ {self.line} PE{self.x, self.y} - t:[{self.t_start}-{self.t_stop}]/"\

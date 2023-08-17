@@ -39,15 +39,15 @@ def drawPE(x, y, color):
 
 
 def drawSystolicArray(color):
-    N1 = 3
-    N2 = 3
-    N3 = 5
+    N1 = 2 *5
+    N2 = 2 *5
+    N3 = 2 *5
 
     for i in range(1, N1+1):
         for j in range(1, N2+1):
             for k in range(1, N3+1):
                 eps = np.array([i,j,k])
-                s = utils.space_time_equation(eps, ProjectionMatrices.output_stationary)
+                s = utils.space_time_equation(eps, ProjectionMatrices.another_one)
                 drawPE(s[0], s[1], color)
 
 def draw_stuff(): 

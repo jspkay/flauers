@@ -42,7 +42,7 @@ def kernel2matrix(kernels):
     output_height = kernel_size * kernel_size
     
     # Stack all unfolded kernels row by row
-    output = np.zeros((kernel_num,output_height), dtype=kernels.dtype)
+    output = np.zeros((kernel_num,output_height), dtype=kernels.in_dtype)
     for idx in range(kernel_num):
         output[idx,:] = kernels[:,:,idx].flatten()
     return np.transpose(output)
@@ -73,7 +73,7 @@ def matmul(a, b, mac_num):
     if (a_width != b_height):
         raise ValueError("Wrong dimensions")
     
-    result = np.zeros((a_height,b_width), dtype=a.dtype)
+    result = np.zeros((a_height,b_width), dtype=a.in_dtype)
     steps = math.ceil(b_height/mac_num)
     for i in range(steps):
         start = mac_num*i
@@ -97,17 +97,17 @@ def hw_matmul(a, b, mac_num):
     # Hardware accelerator expects mac_num*mac_num matrices
     # Add zeros to get required shape
     if (a_width < mac_num):
-        a_new = np.c_[a_new, np.zeros((a_height,mac_num-a_width),dtype=a.dtype)]
+        a_new = np.c_[a_new, np.zeros((a_height,mac_num-a_width), dtype=a.in_dtype)]
         a_width = mac_num
     if (a_height < mac_num):
-        a_new = np.r_[a_new, np.zeros((mac_num-a_height,a_width),dtype=a.dtype)]
+        a_new = np.r_[a_new, np.zeros((mac_num-a_height,a_width), dtype=a.in_dtype)]
         a_height = mac_num
         
     if (b_width < mac_num):
-        b_new = np.c_[b_new, np.zeros((b_height,mac_num-b_width),dtype=b.dtype)]
+        b_new = np.c_[b_new, np.zeros((b_height,mac_num-b_width), dtype=b.in_dtype)]
         b_width = mac_num
     if (b_height < mac_num):
-        b_new = np.r_[b_new, np.zeros((mac_num-b_height,b_width),dtype=b.dtype)]
+        b_new = np.r_[b_new, np.zeros((mac_num-b_height,b_width), dtype=b.in_dtype)]
         b_height = mac_num
     
     a_padded = zero_padding(a_new,1)
@@ -170,7 +170,7 @@ def zero_padding(x, dim):
     """
     input_size = x.shape[0]
     output_size = input_size * 2 - 1
-    output = np.zeros((input_size,output_size), dtype=x.dtype)
+    output = np.zeros((input_size,output_size), dtype=x.in_dtype)
     
     if (dim == 1):
         x_new = x

@@ -7,12 +7,27 @@ from .utils import LineType
 import bitarray
 from .exceptions import *
 
+
 class SystolicArray:
+    # Physical parameters
+    N1 = 0
+    N2 = 0
+    N3 = 0
+    # Transformation matrix
+    T = 0
+    # dtypes
+    in_dtype = None
+    mac_dtype = None
+    # injection parameters
+    should_inject = False
+    fault_list = {}
+    physical_mapping = {}
 
     def __init__(self,
                  n1: int, n2: int, n3: int,
                  T: np.ndarray,
-                 dtype: np.dtype = np.dtype(np.int8)
+                 in_dtype: np.dtype = np.dtype(np.int8),
+                 mac_dtype: np.dtype = None,
                  ):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
@@ -23,49 +38,53 @@ class SystolicArray:
         n2 : columns of the matrix B (corresponding to the columns of C)
         n3 : columns of the matrix A (corresponding to the rows of the matrix B)
         T : projection matrix used for determining the type of systolic array
-        dtype : represents the type of the data seen in the hardware. It only corresponds to the type of input and outputs
+        in_dtype : represents the type of the input data seen in the hardware. It only corresponds to the type of input and outputs
+        mac_dtype: (optional) corresponds to the hardware type used for the accumulation registers. If none, is computed automatically to be 4 times wider than in_dtype
         """
         logging.info(f"[SystolicArray] instantiating a new systolic array...")
         self.N1 = n1
         self.N2 = n2
         self.N3 = n3
         self.T = T
-        self.dtype = dtype
+        self.in_dtype = in_dtype
 
         # Explicit dtype for accumulation without overflow
-        if dtype.kind == "i":
-            self.mac_dtype = np.dtype(dtype.kind + str(dtype.itemsize * 4))
+        if mac_dtype is not None:  # Explicit mac_dtype given
+            self.mac_dtype = mac_dtype
+        elif in_dtype.kind == "i":
+            self.mac_dtype = np.dtype(in_dtype.kind + str(in_dtype.itemsize * 4))
         else:
-            self.mac_dtype = dtype
+            self.mac_dtype = in_dtype
 
-
+        # Array parameters
         logging.info(f"[SystolicArray] N1: {n1}, N2: {n2}, N3: {n3}")
 
+        # Injection parameters
         self.should_inject = False
         self.fault_list = {}
-        self._a_faults = []
-        self._b_faults = []
-        self._c_faults = []
+
+        # It is not possible to get all the iterative positions mathematically using P^-1, so we use this function
+        # to map the iteartion space to the physical space and we will have a list of iterative points (i, j, k)
+        # associated to the physical points (x, y).
+        self._iter_to_phy()
 
     def get_fault_list(self):
         return self.fault_list
 
     def add_fault(self, fault: Fault):
         self.should_inject = True
-        fault.transform(self.T)
+        # fault.transform(self.T)
         index = int(uuid.uuid1())
         self.fault_list[index] = fault
 
-        # Populate the lists self._X_faults with X in [a, b, c]
+        # Populate the dictionaries self._line_faults
         self._preperare_injection_parameters()
-
+        logging.debug(f"[SystolicArray] fault added, fault_parameters: {self._line_faults}")
         return index
 
     def clear_all_faults(self):
         self.fault_list = {}
-        self._a_faults = []
-        self._b_faults = []
-        self._c_faults = []
+        self._preperare_injection_parameters()
         self.should_inject = False
 
     def clear_single_fault(self, id):
@@ -73,28 +92,88 @@ class SystolicArray:
         self.should_inject = self.fault_list.__len__() == 0
         self._preperare_injection_parameters()
 
+    def _iter_to_phy(self):
+        logging.debug(f"[SystolicArray] starting iter_to_phy")
+        P = self.T[0:2, :]  # space projection matrix
+        logging.debug(f"[SystolicArray] space projection matrix is P: \n{P}")
+        for i in range(1, self.N1):
+            for j in range(1, self.N2):
+                for k in range(1, self.N3):
+                    nu = np.array([i, j, k])
+                    eps = tuple(
+                        self.T @ nu)  # We can't use np.ndarray as a key for the dictionary, so we convert it into tuple
+                    s = eps[0:2]
+                    t = eps[2]
+                    nu = tuple(nu)
+                    point_list = self.physical_mapping.get(s)
+                    if point_list is None:
+                        self.physical_mapping.update({s: [(nu, t)]})
+                    else:
+                        point_list.append((nu, t))
+        logging.debug(f"[SystolicArray] iteration space to physical space done:\n{self.physical_mapping}")
+        if logging.root.level <= logging.DEBUG:
+            from matplotlib import pyplot as plt
+            plt.set_loglevel("info")
+            points = np.array(list(self.physical_mapping.keys()))
+            plt.scatter(points[:, 0], points[:, 1])
+            plt.gca().invert_yaxis()
+            # plt.show()
+            del plt
+
     def _preperare_injection_parameters(self):
-        for fault in self.fault_list.values():
-            if fault.line == LineType.a:
-                self._a_faults.append(fault)
-            elif fault.line == LineType.b:
-                self._b_faults.append(fault)
-            elif fault.line == LineType.c:
-                self._c_faults.append(fault)
+        # self._line_faults is an array of dictionaries. There are as many dictionaries are LineTypes.
+        # Each dictionary uses the triplet (i, j, k) as the key and each value should be a list of faults affecting
+        # that iteration.
+        self._line_faults = [{} for i in LineType]
 
-        def fn(f):
-            return f.t_start
-        self._a_faults.sort(key=fn)
-        self._b_faults.sort(key=fn)
-        self._c_faults.sort(key=fn)
+        # Computing the flow directions for each line
+        P = self.T[0:2, :]  # space projection matrix
+        logging.debug(f"P matrix is\n{P}")
+        flow_dirs = [  # Computed from the Uniform Recurrent Equations system
+            P @ np.array([1, 0, 0]),  # for b (same order of LineType: b first, a second, and c last)
+            P @ np.array([0, 1, 0]),  # for a
+            P @ np.array([0, 0, 1]),  # for c
+        ]
+        del P
+        logging.debug(f"[SystolicArray] flow_dirs is\n{flow_dirs}")
 
-        logging.debug(f"[_prepare_injection_parameters] lists list")
-        logging.debug(f"a_faults: {self._a_faults}")
-        logging.debug(f"b_faults: {self._b_faults}")
-        logging.debug(f"c_faults: {self._c_faults}")
+        # Computing T_inv for space conversion
+        T_inv = np.linalg.inv(self.T)
+        for fault in self.fault_list.values():  # we don't care about the keys, they are generated with uuid for the user
+            # iteration variables
+            s = np.array([fault.x, fault.y])
+            t_start = fault.t_start
+            t_stop = fault.t_stop
+            # For each fault we want to inject all the PEs cascading from the first and forwarding the faulty value
+            while True:  # injecting the PEs on the same flow_direction
+                logging.debug(f"[SystolicArray] preparing injection for element {s}")
+                nu_list = self.physical_mapping.get(tuple(s))
+                if nu_list is None:
+                    # Given the first element (x, y) is part of the physical space, the other elements are always
+                    # distant flow_dirs, so if we find a None it means we got outside :D
+                    logging.debug(f"[SystolicArray] element {s} is not part of the physical space. Breaking")
+                    break
 
-    def _inject_value(self, old_value : np.ndarray,
-                      srb: bool = None, # srb -> Should Reverse Bits (take a look at class Fault)
+                for nu, t in nu_list:  # time loop
+                    if t_stop >= t >= t_start:  # This means element nu will be injected
+                        logging.debug(f"iteration {nu} will be injected")
+                        injected_list = self._line_faults[fault.line.value - 1].get(nu)
+                        if injected_list is None:
+                            self._line_faults[fault.line.value - 1].update({nu: [fault]})
+                        else:
+                            injected_list.append(fault)
+
+                # we follow the next element to be injected given the flow direction of that line
+                s = s + flow_dirs[fault.line.value - 1]
+                if (flow_dirs[fault.line.value-1] == np.zeros((3,1))).all():
+                    logging.debug(f"[SystolicArray] element {s} constitutes a stationary variable. Breaking")
+                    break
+                # starting and stopping time are incremented by one for the next element
+                t_start += 1
+                t_stop += 1
+
+    def _inject_value(self, old_value: np.ndarray,
+                      srb: bool = None,  # srb -> Should Reverse Bits (take a look at class Fault)
                       bit: int = None,
                       polarity: int = None) -> np.ndarray:
         dtype = old_value.dtype
@@ -133,6 +212,7 @@ class SystolicArray:
         """
         logging.info(f"[SystolicArray] processing matrix multiplication...")
 
+        # ##################### Safe Casting and data structures instantiations
         # Safe casting to avoid overflow
         if not isinstance(A, np.ndarray):
             logging.warning(f"[SystolicArray] Matrix A is not instance of numpy.ndarray. This may cause problems")
@@ -142,17 +222,17 @@ class SystolicArray:
         # A = A.astype(self.dtype, casting="safe")
         # Would be nice to use the astype method,
         # but it doesn't check dynamically whether the values fit in the new type
-        A_np = np.array(A, dtype=self.dtype)
+        A_np = np.array(A, dtype=self.in_dtype)
         if not (A_np == A).all():
             raise CastingError(
-                f"Couldn't convert A from {type(A)} to {self.dtype} because some values are greater than admissible.\n"
+                f"Couldn't convert A from {type(A)} to {self.in_dtype} because some values are greater than admissible.\n"
                 f"The max value is: {np.max(A)}. Have you considered signed and unsigned types?\n"
                 f"Matrix A was: \n{A}")
         # B = B.astype(self.dtype, casting="safe")
         B_np = np.array(B)
         if not (B_np == B).all():
             raise CastingError(
-                f"Couldn't convert B from {type(B)} to {self.dtype} because some values are greater than admissible."
+                f"Couldn't convert B from {type(B)} to {self.in_dtype} because some values are greater than admissible."
                 f"Matrix B was: \n{B}")
 
         A = A_np
@@ -185,11 +265,11 @@ class SystolicArray:
 
         # TODO: replace this arrays with simpler structures that takes into account
         # only the actual data we are using, not the entire iteration vector space
-        a = np.zeros((N1, N2, N3), dtype=self.dtype)
-        b = np.zeros((N1, N2, N3), dtype=self.dtype)
+        a = np.zeros((N1, N2, N3), dtype=self.in_dtype)
+        b = np.zeros((N1, N2, N3), dtype=self.in_dtype)
         c = np.zeros((N1, N2, N3), dtype=self.mac_dtype)
 
-        # input operations
+        # ############################# Input operations and injections on a and b
         logging.debug(f"[SystolicArray] performing input operations...")
         j = 0
         for i in range(0, N1):
@@ -199,22 +279,6 @@ class SystolicArray:
                 a[i, j, k] = A[a_i - 1, a_k - 1]
                 # REMEMBER: although we are initializing the whole array, it doesn't make sense (for our mathematical
                 # framework) to talk about a[i, j, k] when either i == 0 or k == 0
-
-        if self.should_inject:
-            logging.debug(f"[SystolicArray] injecting line a input values")
-            for fault in self._a_faults:
-                i, j, k = fault.iteration_start
-                if i > 0 and j >= 0 and k > 0: # we'll take care of this fault later
-                    logging.debug(f"[SystolicArray] skipping fault in {i, j, k}")
-                    continue
-                # at least one among i, j and k is 0. So we need to change the value
-                logging.debug(f"[SystolicArray] injecting {i, j, k}")
-                i = i if i > 0 else 1
-                j = j if j >= 0 else 0 # j can actually be 0
-                k = k if k > 0 else 1
-                logging.debug(f"[SystolicArray] new iteration values are {i, j, k}")
-                a[i, j, k] = self._inject_value(A[i-1, k-1], fault.should_reverse_bits, fault.bit, fault.polarity)
-
         i = 0
         for j in range(1, N2):
             for k in range(1, N3):
@@ -224,89 +288,70 @@ class SystolicArray:
                 # REMEMBER: as previously stated for a, it doesn't make sense (for our mathematical
                 # framework) to talk about b[i, j, k] when either j == 0 or k == 0
 
-        # exit(0)
-
-        logging.info(f"[SystolicArray] data structures ready")
-
-        logging.info(f"[SystolicArray] forwarding a and b values... ")
+        logging.debug(f"[SystolicArray] forwarding a and b values... ")
 
         # Forward a and b values (the fast way)
         for i in range(1, N1):
             # Forward the values of a and b all at once (for performance)
-            a[:, i, :] = a[:, i-1, :]
-            b[i, :, :] = b[i-1, :, :]
+            a[:, i, :] = a[:, i - 1, :]
+            b[i, :, :] = b[i - 1, :, :]
 
+        # Injecting values on lines a and b
         if self.should_inject:
-            pass
-            # TODO: perform proper the injection on a and b
-            # The thing is, when injecting on a and b and the forward is done as above, one should
-            # consider multiple injections in different times. So, it is crucial to consider the precedence of the
-            # forwarding of the faults. Specifically: if two faults occur on a in two different times t1 and t2 (with
-            # t1 < t2), the values after t1 will be all corrupted and propagated forward. On top of that, the fault
-            # that occurs in t2 will corrupt the already corrupted values of a.
+            # ### line a
+            logging.debug(f"[SystolicArray] [a] injecting line a")
+            for nu, fault_list in self._line_faults[LineType.a.value - 1].items():
+                i, j, k = nu
+                if i >= N1 or j >= N2 or k >= N3:
+                    logging.info(f"[SystolicArray] [a] iteration {nu} is not used for this computation "
+                                 f"with size {N1, N2, N3}, so it won't be injected")
+                    continue
+                for fault in fault_list:
+                    logging.debug(f"[SystolicArray] [a] injecting iteration {i, j, k}")
+                    a[i, j-1, k] = self._inject_value(a[i, j-1, k], fault.should_reverse_bits, fault.bit,
+                                                    fault.polarity)
+            # ### line b
+            logging.debug(f"[SystolicArray] [b] injecting line b")
+            for nu, fault_list in self._line_faults[LineType.b.value - 1].items():
+                i, j, k = nu
+                if i >= N1 or j >= N2 or k >= N3:
+                    logging.info(f"[SystolicArray] [b] iteration {nu} is not used for this computation "
+                                 f"with size {N1, N2, N3}, so it won't be injected")
+                    continue
+                for fault in fault_list:
+                    logging.debug(f"[SystolicArray] [b] injecting iteration {i, j, k}")
+                    b[i-1, j, k] = self._inject_value(b[i-1, j, k], fault.should_reverse_bits, fault.bit,
+                                                    fault.polarity)
 
-            # For now only stuck-at injection work properly.
-            # On the actual computation cycles, we only iterate for i, j, k all greater strictly greater than 0.
-            # It may happen that when injecting the values of i, j, and k (computed using the inverse of the projection
-            # matrix) could smaller than or equal to 0. Thus, we need to inject the input values if that's the case
-            for fault in self._a_faults:
-                it_start = list(map(lambda x: int(x), fault.iteration_start))
-                it_stop = list(map(lambda x: int(x), fault.iteration_stop))
-                for i in range(it_start[0], min(it_stop[0]+1, N1)):
-                    for j in range(it_start[1], min(it_stop[1]+1, N2)):
-                        for k in range(it_start[2], min(it_stop[2]+1, N3)):
-                            logging.debug(f"[SystolicArray] injecting line a on iteration {(i,j,k)}")
-                            logging.debug(f"[SystolicArray] line a old value is {a[i, j, k-1]}")
-                            a[i, j, k] = self._inject_value(a[i, j, k], srb=fault.should_reverse_bits, bit=fault.bit, polarity=fault.polarity)
-                            logging.debug(f"[SystolicArray] line a new value is {a[i, j, k]}")
-            for fault in self._b_faults:
-                # TODO: implement as for a
-                pass
+            logging.info(f"[SystolicArray] data structures ready")
 
-        # actual computations
+        # ###################################### Actual computations and injections on c
         logging.debug(f"[SystolicArray] starting the actual computations...")
         for i in range(1, N1):
             for j in range(1, N2):
                 for k in range(1, N3):
-                    # print(str(i) + " " + str(j) + " " + str(k))
 
                     # Originally the algorithm was performed like this, but it's quite inefficient...
                     # a[i, j, k] = a[i, j - 1, k]
                     # b[i, j, k] = b[i - 1, j, k]
 
+                    c[i, j, k] = (c[i, j, k - 1] +
+                                  # here the explicit cast is required for avoiding overflow
+                                  a[i, j - 1, k].astype(dtype=self.mac_dtype, casting="safe") *
+                                  b[i - 1, j, k].astype(dtype=self.mac_dtype, casting="safe")
+                                  )
+
                     # Actual injection
                     if self.should_inject:
-                        # logging.debug(f"Checking for injection on c")
-                        # TODO: implement the fault on c
-                        for fault in self._c_faults:
-                            if utils.is_comprised([i, j, k], fault.iteration_start, fault.iteration_stop):
-                                old_value = c[i, j, k]
-                                logging.info(f"[SystolicArray] injecting c in iteration {(i, j, k)}")
-                                logging.debug(f"[SystolicArray] old value of c[{i, j, k}] = {old_value}")
-
-                                c[i, j, k - 1] = self._inject_value(c[i, j, k], fault.should_reverse_bits, fault.bit, fault.polarity)
-                                """
-                                bit_value.frombytes( old_value.tobytes() )
-                                bit_value.bytereverse()
-                                if fault.should_reverse_bits:
-                                    bit_value.reverse()
-                                bit_value[fault.bit] = fault.polarity
-                                if fault.should_reverse_bits:
-                                    bit_value.reverse()
-                                bit_value.bytereverse()
-
-                                new_value = np.frombuffer(bit_value.tobytes(), dtype=self.dtype)[0]
-
-                                c[i, j, k] = new_value
-                                bit_value = bitarray.bitarray()
-                                """
-
-                                logging.debug(f"[SystolicArray] injected value c[{i, j, k}] = {c[i, j, k]}")
-
-                    c[i, j, k] = ( c[i, j, k - 1] +
-                                   a[i, j - 1, k].astype(dtype=self.mac_dtype, casting="safe") *
-                                   b[i - 1, j, k].astype(dtype=self.mac_dtype, casting="safe")
-                                   )
+                        fault_list = self._line_faults[LineType.c.value-1].get((i, j, k))
+                        if fault_list is not None:
+                            for fault in fault_list:
+                                c[i, j, k] = self._inject_value(
+                                    c[i, j, k],
+                                    fault.should_reverse_bits,
+                                    fault.bit,
+                                    fault.polarity,
+                                )
 
         """ for j in range(N1-1):
             r = a[:, j, :] == a[:, j-1, :]
