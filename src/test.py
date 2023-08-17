@@ -1,16 +1,14 @@
 import numpy as np
-from scipy.sparse import bsr_array
 
 import saffira as si
-from saffira import systolic_array as sa
 from saffira import projection_matrices as pm
 import torch
 import unittest
 import logging
 
-#logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 #logging.basicConfig(level=logging.INFO)
-logging.basicConfig(level=logging.WARNING)
+# logging.basicConfig(level=logging.WARNING)
 
 
 def test_matmul():
@@ -185,10 +183,10 @@ def test_injection_simple():
     print("Running injection_simple")
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     # b = np.ones((2,2))
-    b = np.array([[1, 2], [3, 4]])
+    b = np.array([[10, 11], [12, 13]])
 
-    array = si.SystolicArray(10, 10, 10, si.projection_matrices.row_stationary, dtype=np.dtype(np.int8) )
-    f = si.fault_models.StuckAt("a", x=1, y=1, bit=0, polarity=0, msb="last")
+    array = si.SystolicArray(10, 10, 10, si.projection_matrices.output_stationary, in_dtype=np.dtype(np.int8))
+    f = si.fault_models.StuckAt("c", x=1, y=1, bit=0, polarity=1, msb="first")
     array.add_fault(f)
     c_sa = si.convolve_with_array(a, b, lowering=si.lowerings.S_Im2Col, array=array)
 
@@ -235,12 +233,3 @@ class Tests(unittest.TestCase):
 if __name__ == "__main__":
     test_injection_simple()
     exit(0)
-
-    result = test_matmul()
-    print(result)
-
-    result = test_convolve()
-    print(result)
-
-    result = test_convolve_with_explicit_instantiation()
-    print(result)

@@ -69,7 +69,7 @@ def space_time_equation(nu: np.ndarray, t: np.ndarray):
 def inverse_space_time_equation(eps: np.ndarray, t: np.ndarray):
     """
         Args:
-            eps -> space-time vector containing [x,y,t]
+            eps -> space-time vector containing [x, y, t]
             T -> space-time projection matrix
         Returns:
             nu -> 3D iteration vector composed by [i, j, k]
@@ -78,6 +78,7 @@ def inverse_space_time_equation(eps: np.ndarray, t: np.ndarray):
     t_inv = np.linalg.inv(t)
     nu = t_inv @ eps
     return nu
+
 
 def is_comprised(
         nu: list[int, int, int],
@@ -102,3 +103,40 @@ def is_comprised(
         if nu[i] < nu_start[i] or nu[i] > nu_stop[i]:
             return False
     return True
+
+
+def check_improvement(self, a: np.ndarray, b: np.ndarray, improving_direction: np.ndarray):
+    """
+    This function returns true if b is greater than a in direction improving_direcition. This means that b is better
+    than a if b-a is parallel to improving_direction AND the distance of b to the origin is greater than the
+    distance of a to the origin.
+    Obviously, a and b be should be parallel to improving_direcion:
+        a = alpha * improving_direction, for some scalar alpha
+        b = beta * improving_direction, for some scalar beta
+    a and b are both parallel to improving_direction iff b-a is parallel to improving_direction. (The proof is left
+    to the reader as an exercise).
+
+    Parameters
+    ---
+    a -> best for now
+    b -> potential improvement over a
+    improving_direction -> direction in which we seek the improvment
+
+    Returns
+    ---
+    res -> true if b is better than a in improving_direction, false otherwise
+    """
+
+    alpha = np.zeros((2, 1))
+    d = a - b  # we compute b-a (or a-b, so we can check for a positive sign instead of a negative one, later on)
+    for i in range(2):
+        alpha[i] = d[i] / improving_direction[i]
+
+    # d is parallel to improving direction if d = alpha * improving_direction for some scalar alpha. This means
+    # that exist 1/alpha such that d * 1/alpha = improving_direction. alpha exists if we can divide d and
+    # improving_direction component-wise and the result have the same values for both components (i.e. the division
+    # actually corresponds to a scalar :D
+    if alpha[0] == alpha[1] and alpha[0] > 0:
+        return True
+
+    return False
