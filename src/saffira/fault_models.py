@@ -25,6 +25,8 @@ class Fault:
         if time_string == "inf":
             result[0] = 0
             result[1] = 1000000
+        else:
+            raise NotImplementedError("[Fault] can't parse anything else for now...")
 
         return result[0], result[1]
 
@@ -51,6 +53,8 @@ class Fault:
         bit -> position of the bit to inject
         polarity -> 1 or 0, value of the new bit
         msb -> string between "first" or "last": "first" means that the msb has index 0
+
+        TODO: find how to implement mode injection
         mode -> string between "input" and "output": determines whether to inject the input or the output of
                 a specific PE
         """
@@ -81,6 +85,7 @@ class Fault:
 
         assert mode == "input" or mode == "output", f'mode can be either "input" or "output"! Value  {mode} not valid!'
         self.mode = mode
+        logging.warning(f"[Fault] even though mode is still available as a parameter, it is not used")
 
         logging.debug(f"[Fault] bit: {bit}, polarity: {polarity}, msb: {msb}")
 
