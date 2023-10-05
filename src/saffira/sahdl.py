@@ -36,9 +36,9 @@ def get_pe_mapping(n1, n2, n3, T):
     # PEs is a map of the coordinates of the processing elements. Specifically, the key is a tuple (x, y) that
     # represents the physical coordinate of that PE
     PEs = {}
-    for i in range(1, n1):
-        for j in range(1, n2):
-            for k in range(1, n3):
+    for i in range(1, n1+1):
+        for j in range(1, n2+1):
+            for k in range(1, n3+1):
                 # Here we iterate over the whole iteration-space and compute the corresponding physical coordinate
                 s = P @ np.array([i, j, k])
 
@@ -60,12 +60,16 @@ def get_pe_mapping(n1, n2, n3, T):
                             current_pe.flowing[direction][line.value - 1] = (new_pos[0], new_pos[1])
                             pe.flowing[-1 * direction][line.value - 1] = (s[0], s[1])
 
-    """    for p, el in array.items():
+    """
+    a_index = utils.LineType.a.value - 1
+    b_index = utils.LineType.b.value - 1
+    c_index = utils.LineType.c.value - 1
+    for p, el in PEs.items():
         print(f"{p} ->\n"
               f"\ta {el.flowing[-1][a_index]} -> {el} -> {el.flowing[1][a_index]}\n"
               f"\tb {el.flowing[-1][b_index]} -> {el} -> {el.flowing[1][b_index]}\n"
               f"\tc {el.flowing[-1][c_index]} -> {el} -> {el.flowing[1][c_index]}")
-    """
+    # """
     return PEs
 
 
@@ -139,11 +143,27 @@ class Sahdl(mg.Module):
         self.in_depth = in_depth
         self.mac_depth = mac_depth
 
-        PEs_mapping = get_pe_mapping(n1, n2 , n3, T)
+        PEs_mapping = get_pe_mapping(n1, n2, n3, T)
         self.PEs_mapping = PEs_mapping
 
         self.PEs = {p: PE(in_depth, mac_depth) for p in PEs_mapping.keys()}
         PEs = self.PEs
+
+        """
+        # TODO it would be possible to use the special migen.Instance instead of just having all the signals in the same
+        # module, but in order to do that, it is necessary to instantiate a couple of signals to connect the different 
+        # PEs 
+        pe = mg.Instance(
+            "PE",
+            i_a_in = ,
+            i_b_in = ,
+            i_c_in = ,
+            o_a_out = ,
+            o_b_out = ,
+            o_c_out = ,
+        )
+        # """
+
         for p, el in PEs_mapping.items():
 
             # connections on line a
