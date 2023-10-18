@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.WARNING)
 
 
-def test_matmul():
+def test_matmul() -> np.ndarray:
     print("Running test_matmul")
     a = np.array([[1, 2], [3, 4]])
     b = np.array([[5, 6], [7, 8]])
@@ -26,7 +26,7 @@ def test_matmul():
     return result
 
 
-def test_convolve():
+def test_convolve() -> np.ndarray:
     print("Running test_convolve")
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     # a = np.ones((3,3))
@@ -45,7 +45,7 @@ def test_convolve():
     return c_sa == np.array(c_torch)
 
 
-def test_convolve_with_explicit_instantiation():
+def test_convolve_with_explicit_instantiation() -> np.ndarray:
     print("Running test_convolve_with_explicit_instantiation")
     # input data
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
@@ -83,7 +83,7 @@ def test_convolve_with_explicit_instantiation():
     print("Expected: ")
     print(c_sa)
 
-    # Perform the convolution with pytorch
+    # Perform the convolution with torch
     aT = torch.from_numpy(a).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
     bT = torch.from_numpy(b).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
     c_torch = torch.nn.functional.conv2d(aT, bT)
@@ -93,7 +93,7 @@ def test_convolve_with_explicit_instantiation():
     return c_sa == np.array(c_torch)
 
 
-def test_convolution_with_im2col():
+def test_convolution_with_im2col() -> np.ndarray:
     print("Running test_convolution_with_im2col")
     # input data
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
@@ -115,7 +115,7 @@ def test_convolution_with_im2col():
     print("Expected: ")
     print(c_sa)
 
-    # Perform the convolution with pytorch
+    # Perform the convolution with torch
     aT = torch.from_numpy(a).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
     bT = torch.from_numpy(b).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
     c_torch = torch.nn.functional.conv2d(aT, bT)
@@ -125,7 +125,7 @@ def test_convolution_with_im2col():
     return c_sa == np.array(c_torch)
 
 
-def test_convolve_with_array():
+def test_convolve_with_array() -> np.ndarray:
     print("Running test_convolve_with_array")
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     # a = np.ones((3,3))
@@ -145,7 +145,7 @@ def test_convolve_with_array():
     return c_sa == np.array(c_torch)
 
 
-def test_weird_test():
+def test_weird_test() -> np.ndarray:
     a = np.array([[0.,     0.,     0.,     0.,     0.,     0.,     0.,     0.,     0., 0., 0., 0.],
                   [0.,     0.,     0.,     0.,     0.,     0.,     0.,     0.,     0., 0., 0., 0.],
                   [0., 27113., 27404.,     0.,     0.,     0.,     0.,     0.,     0., 0., 0., 0.],
@@ -179,7 +179,7 @@ def test_weird_test():
     return c_sa == np.array(c_torch)
 
 
-def test_injection_simple():
+def test_injection_simple() -> np.ndarray:
     print("Running injection_simple")
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     # b = np.ones((2,2))
@@ -231,5 +231,15 @@ class Tests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    test_injection_simple()
+    test_matmul()
+
+    """ hdl generation
+    from saffira.sahdl import *
+    from migen.fhdl import verilog
+
+    sa = Sahdl(3, 3, 3, si.projection_matrices.output_stationary,)
+    v = verilog.convert(sa, sa.io)
+    print(v)
+    """
+
     exit(0)
