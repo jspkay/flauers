@@ -14,7 +14,7 @@ using namespace boost::python;
 namespace np = boost::python::numpy;
 
 np::ndarray matmul(object, np::ndarray, np::ndarray);
-object _inject_value(npy_intp old_value, object srb, object bit, object polarity);
+object _inject_value(int old_value, object srb, object bit, object polarity);
 bool checkConversion(PyArrayObject *, PyArrayObject *);
 
 int init_numpy();
@@ -245,12 +245,12 @@ np::ndarray matmul(object self_systolic, np::ndarray A, np::ndarray B){
                     for(int fff = 0; fff < len(this_itearation_faults); fff++){
                         object fault = this_itearation_faults[fff];
                         c[i][j][k] = _inject_value(
-                                np::ndarray(c[i][j][k]),
+                                extract<int>(c[i][j][k]),
                                 fault.attr("should_reverse_bits"),
                                 fault.attr("bit"),
                                 fault.attr("polarity")
                                 );
-                        std::cout << extract<char *>(str(fault)) << std::endl;
+                        // std::cout << extract<char *>(str(fault)) << std::endl;
                     }
 
                 }
@@ -277,19 +277,19 @@ np::ndarray matmul(object self_systolic, np::ndarray A, np::ndarray B){
     // return actual_res;
 }
 
-object _inject_value(npy_intp old_value, object srb, object bit, object polarity){
+object _inject_value(int old_value, object srb, object bit, object polarity){
     int b = extract<int>(bit);
     int p = extract<int>(polarity);
 
-    npy_intp newValue = old_value;
+    int newValue = old_value;
 
-    if(p) newValue &= 0x1 << b;
-    else newValue |= ~(0x1 << b);
+    if(p) newValue |= 0x1 << b;
+    else newValue &= ~(0x1 << b);
 
-    std::cout << "The value to inject is " << old_value <<
-    " and its new value would be " << newValue;
+    std::cout << "The value to inject is " << std::dec << old_value <<
+    " and its new value would be " << newValue << std::endl;
 
-    return object(3);
+    return object(newValue);
 }
 
 bool checkConversion(PyArrayObject *in_array, PyArrayObject *out_array){
