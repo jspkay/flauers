@@ -51,7 +51,7 @@ class Fault:
         y -> processing element y coordinate
         time -> string describing the time
         bit -> position of the bit to inject
-        polarity -> 1 or 0, value of the new bit
+        polarity -> 1 or 0, value of the new bit. TODO: could be possible to be a string like 'flip'
         msb -> string between "first" or "last": "first" means that the msb has index 0
 
         TODO: find how to implement mode injection

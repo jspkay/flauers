@@ -7,3 +7,8 @@ authors = [
 ]
 description = "Systolic array simulator and injector withouth VHDL"
 readme = "README.md"
+requires = [
+    "numpy",
+    "tqdm",
+    "logging",
+]

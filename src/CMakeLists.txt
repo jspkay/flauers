@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(saffira VERSION 1.0)
+project(saffira_core VERSION 1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS  "-Wall -Wextra")
@@ -18,13 +18,13 @@ message(STATUS "PYTHON_EXECUTABLE = ${PYTHON_EXECUTABLE}")
 message(STATUS "PYTHON_INCLUDE_DIRS = ${PYTHON_INCLUDE_DIRS}")
 message(STATUS "Boost_LIBRARIES = ${Boost_LIBRARIES}")
 
-add_library(saffira MODULE ./saffira.cpp)
+add_library(saffira_core MODULE ./saffira.cpp)
 
-target_link_libraries(saffira Boost::python Boost::numpy ${PYTHON_LIBRARIES})
-set_target_properties(saffira
+target_link_libraries(saffira_core Boost::python Boost::numpy ${PYTHON_LIBRARIES})
+set_target_properties(saffira_core
         PROPERTIES
             OUTPUT_NAME ".cpython-39-x86_64-linux-gnu"
             SUFFIX ".so"
-            PREFIX "saffira"
+            PREFIX "${PROJECT_NAME}"
         )
 

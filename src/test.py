@@ -7,7 +7,7 @@ import unittest
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
-#logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 # logging.basicConfig(level=logging.WARNING)
 
 
@@ -231,7 +231,7 @@ class Tests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    test_matmul()
+    test_injection_simple()
 
     """ hdl generation
     from saffira.sahdl import *

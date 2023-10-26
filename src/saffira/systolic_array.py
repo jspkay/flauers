@@ -6,7 +6,8 @@ from . import utils
 from .utils import LineType
 import bitarray
 from .exceptions import *
-
+from . import saffira_core as core
+import sys
 
 class SystolicArray:
     # Physical parameters
@@ -22,6 +23,8 @@ class SystolicArray:
     should_inject = False
     fault_list = {}
     physical_mapping = {}
+
+    LineType = LineType
 
     def __init__(self,
                  n1: int, n2: int, n3: int,
@@ -210,6 +213,18 @@ class SystolicArray:
         ---
         o : multiplication a * b
         """
+
+        if True:
+            print(self)
+            print(core)
+            p = core.matmul(self, A, B)
+            print("we computed\n", p)
+            print("Expected is")
+            print(A @ B)
+            return p
+        else:
+            pass
+
         logging.info(f"[SystolicArray] processing matrix multiplication...")
 
         # ##################### Safe Casting and data structures instantiations
