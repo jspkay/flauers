@@ -231,5 +231,13 @@ class Tests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    test_injection_simple()
+    # hdl generation
+    from saffira.sahdl import *
+    from migen.fhdl import verilog
+
+    sa = Sahdl(3, 3, 3, si.projection_matrices.output_stationary,)
+    v = verilog.convert(sa, sa.io)
+    print(v)
+
+
     exit(0)
