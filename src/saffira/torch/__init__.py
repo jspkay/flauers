@@ -49,16 +49,16 @@ class SystolicConvolution(nn.Conv2d):
         # Each element of the list should be a couple with the number of the channel and the fault:
         #   e.g. (-1, f) -> means that fault f will affect every channel
         #        (1, f) -> means that fault f will affect only channel 1
-        self.fault_list = []
+        self.channel_fault_list = []
 
     def add_fault(self, fault: fault_models.Fault, channel=-1):
         self.injecting += 1
-        self.fault_list.append((channel, fault))
+        self.channel_fault_list.append((channel, fault))
         id = self.hw.add_fault(fault)
         return id
 
     def clear_faults(self):
-        self.fault_list = []
+        self.channel_fault_list = []
         self.injecting = 0
 
     #def remove_fault(self, id):
@@ -140,7 +140,7 @@ class SystolicConvolution(nn.Conv2d):
 
     def _1grouping_conv(self, input, out_shape):
 
-        assert len(self.fault_list) == 1, "Only one fault admissible at a time!"
+        assert len(self.channel_fault_list) == 1, "Only one fault admissible at a time!"
 
         result = torch.zeros((self.out_channels, *out_shape))
         for c_out in range(self.out_channels):
@@ -158,7 +158,7 @@ class SystolicConvolution(nn.Conv2d):
                 a = np.array(a)
                 b = np.array(b)
 
-                if self.fault_list[0][0] == -1 or self.fault_list[0][0] == c_out:
+                if self.channel_fault_list[0][0] == -1 or self.channel_fault_list[0][0] == c_out:
                     convolution = convolve_with_array(
                         a, b,
                         lowering=lowerings.S_Im2Col,
