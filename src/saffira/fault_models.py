@@ -5,19 +5,6 @@ from .utils import LineType
 
 
 class Fault:
-    # Intrinsic parameters of a fault
-    line = None # (LineType) Injecting a, b or c registers
-    x = None # (int) x position in space
-    y = None # (int) y position in space
-    t_start = None # (int) starting time of the action of the fault
-    t_stop = None # (int) stop time of the action of the fault
-    should_reverse_bits = None # (bool) This parameter is used to control to inject either the MSB or the LSB. It's
-                               # connected to the parameters msb of the contructor
-    bit = None # (int) which bit to inject
-
-    # Iteration vectors bounds for actual injection. Computed in self.transform
-    iteration_start = [None]*3
-    iteration_stop = [None]*3
 
     def _parse_time(self, time_string) -> tuple[int, int]:
         result = [0, 0]
@@ -58,6 +45,21 @@ class Fault:
         mode -> string between "input" and "output": determines whether to inject the input or the output of
                 a specific PE
         """
+
+        # Intrinsic parameters of a fault
+        self.line = None  # (LineType) Injecting a, b or c registers
+        self.x = None  # (int) x position in space
+        self.y = None  # (int) y position in space
+        self.t_start = None  # (int) starting time of the action of the fault
+        self.t_stop = None  # (int) stop time of the action of the fault
+        self.should_reverse_bits = None  # (bool) This parameter is used to control to inject either the MSB or the LSB. It's
+        # connected to the parameters msb of the contructor
+        self.bit = None  # (int) which bit to inject
+
+        # Iteration vectors bounds for actual injection. Computed in self.transform
+        self.iteration_start = [None] * 3
+        self.iteration_stop = [None] * 3
+
 
         logging.debug(f"[Fault] initializing a new Fault")
 

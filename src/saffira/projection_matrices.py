@@ -16,6 +16,15 @@ row_stationary = np.array(
     ]
 )
 
+col_stationary = np.array(
+    [
+        [0, 0,  1],
+        [1,  0, 0],
+        [1,  1, 1]
+    ]
+)
+
+
 no_local_reuse = np.array(
     [
         [-1,  1,  0],
