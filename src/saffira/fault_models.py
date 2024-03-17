@@ -94,6 +94,7 @@ class Fault:
     def __repr__(self):
         str = f"Fault @ {self.line} PE{self.x, self.y} - t:[{self.t_start}-{self.t_stop}]/"\
             f"bit {self.bit} -> {self.polarity}"
+        return str
 
 
 class StuckAt(Fault):
