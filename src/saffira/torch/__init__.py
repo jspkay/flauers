@@ -27,6 +27,8 @@ class SystolicConvolution(nn.Conv2d):
         super().__init__(*args, **kwargs)
         # Additional initialization if needed
 
+        self.device = torch.device("cpu")
+
         assert self.groups == 1, "Convolutions with more than 1 groups are not possible for now!"
 
         self._name = 'SystolicConvolution'  # Custom name attribute
@@ -44,14 +46,24 @@ class SystolicConvolution(nn.Conv2d):
         self.weights = None
         self.injecting = 0
 
-    def add_fault(self, fault: fault_models.Fault):
+        # Each element of the list should be a couple with the number of the channel and the fault:
+        #   e.g. (-1, f) -> means that fault f will affect every channel
+        #        (1, f) -> means that fault f will affect only channel 1
+        self.fault_list = []
+
+    def add_fault(self, fault: fault_models.Fault, channel=-1):
         self.injecting += 1
+        self.fault_list.append((channel, fault))
         id = self.hw.add_fault(fault)
         return id
 
-    def remove_fault(self, id):
-        self.hw.clear_single_fault(id)
-        self.injecting -= 1
+    def clear_faults(self):
+        self.fault_list = []
+        self.injecting = 0
+
+    #def remove_fault(self, id):
+    #    self.hw.clear_single_fault(id)
+    #    self.injecting -= 1
 
     def load_weights(self, weights):
         # We assume that groups is always 1!
@@ -127,6 +139,9 @@ class SystolicConvolution(nn.Conv2d):
         return result
 
     def _1grouping_conv(self, input, out_shape):
+
+        assert len(self.fault_list) == 1, "Only one fault admissible at a time!"
+
         result = torch.zeros((self.out_channels, *out_shape))
         for c_out in range(self.out_channels):
             for c_in in range(self.in_channels):
@@ -142,11 +157,17 @@ class SystolicConvolution(nn.Conv2d):
 
                 a = np.array(a)
                 b = np.array(b)
-                convolution = convolve_with_array(
-                    a, b,
-                    lowering=lowerings.S_Im2Col,
-                    array=self.hw,
-                )
+
+                if self.fault_list[0][0] == -1 or self.fault_list[0][0] == c_out:
+                    convolution = convolve_with_array(
+                        a, b,
+                        lowering=lowerings.S_Im2Col,
+                        array=self.hw,
+                    )
+                else:
+                    lolif = lowerings.S_Im2Col(a.shape, b.shape)
+                    x = lolif.lower_activation(a) @ lolif.lower_kernel(b)
+                    convolution = lolif.lift(x)
 
                 result[c_out] += convolution
 
