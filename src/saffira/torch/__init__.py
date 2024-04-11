@@ -4,6 +4,8 @@ from .. import projection_matrices
 from .. import fault_models
 from .. import lowerings
 
+from scipy.signal import convolve2d
+
 from ..__init__ import *
 
 # others
@@ -11,7 +13,7 @@ import logging
 import torch
 import torch.nn as nn
 import numpy as np
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 import concurrent.futures as futures
 
 # Configuration variables
@@ -29,7 +31,7 @@ class SystolicConvolution(nn.Conv2d):
 
         self.device = torch.device("cpu")
 
-        assert self.groups == 1, "Convolutions with more than 1 groups are not possible for now!"
+        assert self.groups <= 1, "Convolutions with more than 1 groups are not possible for now!"
 
         self._name = 'SystolicConvolution'  # Custom name attribute
         if hardware is not None:  # if hardware is explicit, then use that!
@@ -60,6 +62,7 @@ class SystolicConvolution(nn.Conv2d):
     def clear_faults(self):
         self.channel_fault_list = []
         self.injecting = 0
+        self.hw.clear_all_faults()
 
     #def remove_fault(self, id):
     #    self.hw.clear_single_fault(id)
@@ -102,8 +105,9 @@ class SystolicConvolution(nn.Conv2d):
             batch_size = input.shape[0]
             out_shape = self._get_out_shape(input.shape[2], input.shape[3])
             result = torch.zeros((batch_size, self.out_channels, *out_shape))
+            
             print(f"[SystolicConvolution] starting batch-processing{'with injection!' if self.injecting >= 1 else ''}")
-            bar = tqdm(range(batch_size))
+            bar = tqdm(range(batch_size), position=0, leave=True)
             it = iter(range(batch_size))
 
             if MULTIPROCESSING:
@@ -140,9 +144,13 @@ class SystolicConvolution(nn.Conv2d):
 
     def _1grouping_conv(self, input, out_shape):
 
-        assert len(self.channel_fault_list) == 1, "Only one fault admissible at a time!"
+        assert len(self.channel_fault_list) <= 1, "Only one fault admissible at a time!"
 
         result = torch.zeros((self.out_channels, *out_shape))
+        if self.bias is not None:
+            newBias = np.expand_dims(self.bias, (1,2) )
+            result += newBias
+        
         for c_out in range(self.out_channels):
             for c_in in range(self.in_channels):
                 a = input[c_in, :, :]
@@ -154,20 +162,29 @@ class SystolicConvolution(nn.Conv2d):
                     return X_pad
 
                 b = self.weights[c_out, c_in, :, :]
+                # b = np.rot90(b, 2)
+                # b = b.T
 
                 a = np.array(a)
                 b = np.array(b)
-
-                if self.channel_fault_list[0][0] == -1 or self.channel_fault_list[0][0] == c_out:
+                
+                if self.channel_fault_list == [] or (
+                    self.channel_fault_list[0][0] != c_out and
+                    self.channel_fault_list[0][0] != -1
+                ):
+                    lolif = lowerings.S_Im2Col(a.shape, b.shape)
+                    low_a = lolif.lower_activation(a)
+                    low_b = lolif.lower_kernel(b)
+                    x = np.matmul(low_a, low_b)
+                    convolution = lolif.lift(x)
+                    # convolution = convolve2d(a, b, mode="valid")
+                    
+                else: # if self.channel_fault_list[0][0] == -1 or self.channel_fault_list[0][0] == c_out:
                     convolution = convolve_with_array(
                         a, b,
                         lowering=lowerings.S_Im2Col,
                         array=self.hw,
                     )
-                else:
-                    lolif = lowerings.S_Im2Col(a.shape, b.shape)
-                    x = lolif.lower_activation(a) @ lolif.lower_kernel(b)
-                    convolution = lolif.lift(x)
 
                 result[c_out] += convolution
 
