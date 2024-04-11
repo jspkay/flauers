@@ -6,9 +6,9 @@ import torch
 import unittest
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
-#logging.basicConfig(level=logging.INFO)
-# logging.basicConfig(level=logging.WARNING)
+# logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 
 
 def test_matmul():
@@ -185,7 +185,9 @@ def test_injection_simple():
     # b = np.ones((2,2))
     b = np.array([[10, 11], [12, 13]])
 
-    array = si.SystolicArray(10, 10, 10, si.projection_matrices.output_stationary, in_dtype=np.dtype(np.int8))
+    array = si.SystolicArray(10, 10, 10,
+                             si.projection_matrices.no_local_reuse,
+                             in_dtype=np.dtype(np.int8))
     f = si.fault_models.StuckAt("c", x=1, y=1, bit=0, polarity=1, msb="first")
     array.add_fault(f)
     c_sa = si.convolve_with_array(a, b, lowering=si.lowerings.S_Im2Col, array=array)
@@ -198,6 +200,17 @@ def test_injection_simple():
     print(c_sa)
     print(c_torch)
     print(c_sa == np.array(c_torch) )
+
+def test_weight_stationary():
+    a = np.ones( (28, 28) )
+    b = np.ones((5, 5))
+
+    hw = si.SystolicArray(
+        n1 = 25, n2 = 25, n3 = 141,
+        T = si.projection_matrices.col_stationary
+    )
+    c_sa = si.convolve_with_array(a, b, array= hw,lowering=si.lowerings.S_Im2Col)
+    print(c_sa)
 
 
 class Tests(unittest.TestCase):
@@ -231,5 +244,6 @@ class Tests(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    #test_weight_stationary()
     test_injection_simple()
     exit(0)
