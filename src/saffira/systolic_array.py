@@ -9,19 +9,6 @@ from .exceptions import *
 
 
 class SystolicArray:
-    # Physical parameters
-    N1 = 0
-    N2 = 0
-    N3 = 0
-    # Transformation matrix
-    T = 0
-    # dtypes
-    in_dtype = None
-    mac_dtype = None
-    # injection parameters
-    should_inject = False
-    fault_list = {}
-    physical_mapping = {}
 
     def __init__(self,
                  n1: int, n2: int, n3: int,
@@ -41,6 +28,21 @@ class SystolicArray:
         in_dtype : represents the type of the input data seen in the hardware. It only corresponds to the type of input and outputs
         mac_dtype: (optional) corresponds to the hardware type used for the accumulation registers. If none, is computed automatically to be 4 times wider than in_dtype
         """
+
+        # Physical parameters
+        self.N1 = 0
+        self.N2 = 0
+        self.N3 = 0
+        # Transformation matrix
+        self.T = T
+        # dtypes
+        self.in_dtype = None
+        self.mac_dtype = None
+        # injection parameters
+        self.should_inject = False
+        self.fault_list = {}
+        self.physical_mapping = {}
+        
         logging.info(f"[SystolicArray] instantiating a new systolic array...")
         self.N1 = n1
         self.N2 = n2

@@ -87,7 +87,7 @@ class Fault:
 
         assert mode == "input" or mode == "output", f'mode can be either "input" or "output"! Value  {mode} not valid!'
         self.mode = mode
-        logging.warning(f"[Fault] even though mode is still available as a parameter, it is not used")
+        # logging.warning(f"[Fault] even though mode is still available as a parameter, it is not used")
 
         logging.debug(f"[Fault] bit: {bit}, polarity: {polarity}, msb: {msb}")
 
