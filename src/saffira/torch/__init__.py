@@ -4,8 +4,6 @@ from .. import projection_matrices
 from .. import fault_models
 from .. import lowerings
 
-from scipy.signal import convolve2d
-
 from ..__init__ import *
 
 # others
@@ -13,7 +11,7 @@ import logging
 import torch
 import torch.nn as nn
 import numpy as np
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import concurrent.futures as futures
 
 # Configuration variables
@@ -87,12 +85,6 @@ class SystolicConvolution(nn.Conv2d):
     def forward(self, input):
         # TODO: Consider the out_channels and the in_channels
         logging.info("Starting forward!")
-        def zero_pads(X, pad):
-            """
-            X has shape (m, n_W, n_H, n_C)
-            """
-            X_pad = np.pad(X, ((0, 0), (0, 0), (pad, pad), (pad, pad)), 'constant', constant_values=0)
-            return X_pad
 
         '''
         # Calculate padding based on kernel size
@@ -104,8 +96,12 @@ class SystolicConvolution(nn.Conv2d):
         if len(input.shape) == 4:  # We have batched inputs!
             batch_size = input.shape[0]
             out_shape = self._get_out_shape(input.shape[2], input.shape[3])
+
+            print(f"out shape is {out_shape}")
+            input = torch.nn.functional.pad(input, [self.padding[0], self.padding[0], self.padding[1], self.padding[1]])
+
             result = torch.zeros((batch_size, self.out_channels, *out_shape))
-            
+
             print(f"[SystolicConvolution] starting batch-processing{'with injection!' if self.injecting >= 1 else ''}")
             bar = tqdm(range(batch_size), position=0, leave=True)
             it = iter(range(batch_size))
@@ -150,7 +146,7 @@ class SystolicConvolution(nn.Conv2d):
         if self.bias is not None:
             newBias = np.expand_dims(self.bias, (1,2) )
             result += newBias
-        
+
         for c_out in range(self.out_channels):
             for c_in in range(self.in_channels):
                 a = input[c_in, :, :]
@@ -162,12 +158,10 @@ class SystolicConvolution(nn.Conv2d):
                     return X_pad
 
                 b = self.weights[c_out, c_in, :, :]
-                # b = np.rot90(b, 2)
-                # b = b.T
 
                 a = np.array(a)
                 b = np.array(b)
-                
+
                 if self.channel_fault_list == [] or (
                     self.channel_fault_list[0][0] != c_out and
                     self.channel_fault_list[0][0] != -1
@@ -178,7 +172,7 @@ class SystolicConvolution(nn.Conv2d):
                     x = np.matmul(low_a, low_b)
                     convolution = lolif.lift(x)
                     # convolution = convolve2d(a, b, mode="valid")
-                    
+
                 else: # if self.channel_fault_list[0][0] == -1 or self.channel_fault_list[0][0] == c_out:
                     convolution = convolve_with_array(
                         a, b,
