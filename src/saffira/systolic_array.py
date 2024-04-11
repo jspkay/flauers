@@ -70,7 +70,7 @@ class SystolicArray:
         # associated to the physical points (x, y).
         self._iter_to_phy()
         from pprint import pprint
-        pprint(self.physical_mapping)
+        # pprint(self.physical_mapping)
 
     def get_fault_list(self):
         return self.fault_list
