@@ -164,7 +164,7 @@ def test_weird_test():
                   [  63.,   21.,  87.,  43.,  -6.],
                   [   5.,  -62., -28., -38.,   1.]])
 
-    array = si.SystolicArray(100, 100, 150, si.projection_matrices.output_stationary)
+    array = si.SystolicArray(100, 100, 150, si.projection_matrices.output_stationary, in_dtype=np.dtype(np.float32) )
     c_sa = si.convolve_with_array(a, b, lowering=si.lowerings.S_Im2Col, array=array)
     # print(c_sa)
     # print(c_sa.dtype)
@@ -186,7 +186,7 @@ def test_injection_simple():
     b = np.array([[10, 11], [12, 13]])
 
     array = si.SystolicArray(10, 10, 10,
-                             si.projection_matrices.no_local_reuse,
+                             si.projection_matrices.col_stationary,
                              in_dtype=np.dtype(np.int8))
     f = si.fault_models.StuckAt("c", x=1, y=1, bit=0, polarity=1, msb="first")
     array.add_fault(f)
@@ -207,7 +207,7 @@ def test_weight_stationary():
 
     hw = si.SystolicArray(
         n1 = 25, n2 = 25, n3 = 141,
-        T = si.projection_matrices.col_stationary
+        T = si.projection_matrices.output_stationary
     )
     c_sa = si.convolve_with_array(a, b, array= hw,lowering=si.lowerings.S_Im2Col)
     print(c_sa)
