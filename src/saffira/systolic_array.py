@@ -1,4 +1,6 @@
 import numpy as np
+import torch
+
 from .fault_models import *  # Contains the class Fault
 import uuid
 import logging
@@ -15,6 +17,7 @@ class SystolicArray:
                  T: np.ndarray,
                  in_dtype: np.dtype = np.dtype(np.int8),
                  mac_dtype: np.dtype = None,
+                 use_old_injection_method=False, custom_matmul=None,
                  ):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
@@ -27,6 +30,8 @@ class SystolicArray:
         T : projection matrix used for determining the type of systolic array
         in_dtype : represents the type of the input data seen in the hardware. It only corresponds to the type of input and outputs
         mac_dtype: (optional) corresponds to the hardware type used for the accumulation registers. If none, is computed automatically to be 4 times wider than in_dtype
+        computation_method: (optional) corresponds to the computation method used for the multiplication computation, whether made on the GPU or using the traditional slow method of iterating on i, j and k
+        custom_matmul: (optional) corresponds to the custom matrix multiplication operation
         """
 
         # Physical parameters
@@ -44,6 +49,7 @@ class SystolicArray:
         self.physical_mapping = {}
         self.physical_space = []
         self.physical_PEs = []
+        self.injected_points_list = {}
 
         logging.info(f"[SystolicArray] instantiating a new systolic array...")
         self.N1 = n1
@@ -79,6 +85,8 @@ class SystolicArray:
             # This is the basic formula that says the time for a single computation is (1 + t_max - t_min) where t_min
             # and t_max are the extremes of the set of time points computed as pi * nu (pi is the time-projection vector
             # and nu = (i, j, k) ).
+        self.multiplier = np.matmul if custom_matmul is None else custom_matmul
+        self.old_injection_method = use_old_injection_method
 
     def get_fault_list(self):
         return self.fault_list
@@ -305,6 +313,8 @@ class SystolicArray:
         # We only can do multiplication of 2D matrices!
         assert len(A.shape) == 2 and len(B.shape) == 2, "matmul only accepts 2D matrices!!!"
 
+        if self.old_injection_method:
+            return self._matmul_old(A, B)
         return self._matmul_new(A, B)
 
     def _fault_function(self, a: np.ndarray, b: np.ndarray, fault: Fault):
@@ -327,7 +337,8 @@ class SystolicArray:
 
 
     def _matmul_new(self, A: np.ndarray, B: np.ndarray):
-        C = A @ B  # This is the golden part
+        # C = A @ B  # This is the golden part
+        C = self.multiplier(A, B)
         C_f = np.zeros_like(C)
 
         for element, accs in self.injected_points_list.items():
@@ -340,7 +351,7 @@ class SystolicArray:
             k_max = max(ks)
             a_bar = A[i, k_min:k_max+1]  # Because of how the mapping on a[i, j, k] is done
             b_bar = B[k_min:k_max+1, j]
-            c_g = a_bar @ b_bar
+            c_g = self.multiplier(a_bar, b_bar) # a_bar @ b_bar
             C_f[i, j] = c_g - self._fault_function(a_bar, b_bar, fault)
 
         return C + C_f
@@ -437,10 +448,16 @@ class SystolicArray:
                     # a[i, j, k] = a[i, j - 1, k]
                     # b[i, j, k] = b[i - 1, j, k]
 
+                    acc = self.multiplier(
+                        # here the explicit cast is required for avoiding overflow
+                        [ a[i, j - 1, k].astype(dtype=self.mac_dtype, casting="safe") ],
+                        [ b[i - 1, j, k].astype(dtype=self.mac_dtype, casting="safe") ]
+                    )
                     c[i, j, k] = (c[i, j, k - 1] +
-                                  # here the explicit cast is required for avoiding overflow
-                                  a[i, j - 1, k].astype(dtype=self.mac_dtype, casting="safe") *
-                                  b[i - 1, j, k].astype(dtype=self.mac_dtype, casting="safe")
+
+                                  acc
+                                  # a[i, j - 1, k].astype(dtype=self.mac_dtype, casting="safe") *
+                                  # b[i - 1, j, k].astype(dtype=self.mac_dtype, casting="safe")
                                   )
 
                     # Actual injection
