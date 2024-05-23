@@ -164,13 +164,13 @@ def test_weird_test():
                   [  63.,   21.,  87.,  43.,  -6.],
                   [   5.,  -62., -28., -38.,   1.]])
 
-    array = si.SystolicArray(100, 100, 150, si.projection_matrices.output_stationary, in_dtype=np.dtype(np.float32) )
+    array = si.SystolicArray(100, 100, 150, si.projection_matrices.output_stationary, in_dtype=np.dtype(np.int8) )
     c_sa = si.convolve_with_array(a, b, lowering=si.lowerings.S_Im2Col, array=array)
     # print(c_sa)
     # print(c_sa.dtype)
 
-    aT = torch.from_numpy(a).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
-    bT = torch.from_numpy(b).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.double))
+    aT = torch.from_numpy(a).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.int8))
+    bT = torch.from_numpy(b).unsqueeze(0).unsqueeze(0).type_as(torch.ones(1, dtype=torch.int8))
 
     c_torch = torch.nn.functional.conv2d(aT, bT)
 
@@ -212,6 +212,33 @@ def test_weight_stationary():
     c_sa = si.convolve_with_array(a, b, array= hw,lowering=si.lowerings.S_Im2Col)
     print(c_sa)
 
+def test_old_new_method():
+    print("Running test_old_new_method")
+    # a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    # b = np.ones((2,2))
+    # b = np.array([[10, 11], [12, 13]])
+
+    a = np.ones((2, 5))
+    b = np.ones((5, 3))
+
+    array = si.SystolicArray(10, 10, 10,
+                             si.projection_matrices.output_stationary,
+                             in_dtype=np.dtype(np.int8), use_old_injection_method=True )
+    f = si.fault_models.StuckAt("c", x=1, y=1, bit=0, polarity=1, msb="first")
+    array.add_fault(f)
+    c_old = array.matmul(a, b)
+
+    array = si.SystolicArray(10, 10, 10,
+                             si.projection_matrices.output_stationary,
+                             in_dtype=np.dtype(np.int8), use_old_injection_method=False)
+    f = si.fault_models.StuckAt("c", x=1, y=1, bit=0, polarity=1, msb="first")
+    array.add_fault(f)
+    c_new = array.matmul(a, b)
+
+    print(c_old)
+    print(c_new)
+
+    return c_old, c_new
 
 class Tests(unittest.TestCase):
 
@@ -242,8 +269,12 @@ class Tests(unittest.TestCase):
         test_injection_simple()
         self.assertTrue(True)
 
+    def test_old_new_method(self):
+        a, b = test_old_new_method()
+        self.assertTrue( a == b )
 
 if __name__ == "__main__":
     #test_weight_stationary()
-    test_injection_simple()
+    a, b = test_old_new_method()
+    print(a == b)
     exit(0)

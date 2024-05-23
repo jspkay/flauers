@@ -121,3 +121,4 @@ def matmul(A, B,
 
     hw = SystolicArray(N1, N2, N3, projection_matrix, **kwargs)
     return hw.matmul(A, B)
+
