@@ -179,13 +179,15 @@ class SystolicArray:
                 t_start += 1
                 t_stop += 1
 
+        return
+
         # This is for _matmul_new
         phy_space = {}
         for i in range(1, self.N1):
             for j in range(1, self.N2):
                 for k in range(1, self.N3):
                     nu = np.array([i, j, k])
-                    s = T @ nu
+                    s = self.T @ nu
                     x = tuple( s[0:2] )
                     t = s[2]
                     ddd = phy_space.get(x)

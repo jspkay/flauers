@@ -11,7 +11,7 @@ import logging
 import torch
 import torch.nn as nn
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm, trange
 import concurrent.futures as futures
 
 # Configuration variables
@@ -97,13 +97,15 @@ class SystolicConvolution(nn.Conv2d):
             batch_size = input.shape[0]
             out_shape = self._get_out_shape(input.shape[2], input.shape[3])
 
-            print(f"out shape is {out_shape}")
+            # print(f"out shape is {out_shape}")
             input = torch.nn.functional.pad(input, [self.padding[0], self.padding[0], self.padding[1], self.padding[1]])
 
             result = torch.zeros((batch_size, self.out_channels, *out_shape))
 
-            print(f"[SystolicConvolution] starting batch-processing{'with injection!' if self.injecting >= 1 else ''}")
-            bar = tqdm(range(batch_size), position=0, leave=True)
+            # print(f"[SystolicConvolution] starting batch-processing{'with injection!' if self.injecting >= 1 else ''}")
+            bar = trange( 0, batch_size, leave=False, dynamic_ncols=True,
+                         desc=f"[SystolicConvolution] batched {'injected' if self.injecting >= 1 else ''}", 
+            )
             it = iter(range(batch_size))
 
             if MULTIPROCESSING:
@@ -125,6 +127,7 @@ class SystolicConvolution(nn.Conv2d):
                     bar.update(1)
                     result[batch_index, :, :, :] = self._1grouping_conv(input[batch_index], out_shape)
 
+            bar.close()
             del out_shape
             del batch_size
 
