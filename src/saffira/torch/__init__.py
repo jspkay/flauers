@@ -207,14 +207,14 @@ class SystolicConvolution(nn.Conv2d):
 
         return result
 
-def compatible_layers(model: torch.Module):
+def compatible_layers(model: torch.nn.Module):
     res = []
     for name, module in model.named_modules():
         if isinstance(module, torch.nn.Conv2d):
             res.append(name)
     return res
 
-def replace_layer(model: torch.Module, name: str, hardware: SystolicArray):
+def replace_layer(model: torch.nn.Module, name: str, hardware: SystolicArray):
     layer = model.get_submodule(name)
     layer_name = name.split(".")[-1]
     parent_name = '.'.join(name.split(".")[:-1])
