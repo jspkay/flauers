@@ -224,6 +224,7 @@ def replace_layer(model: torch.nn.Module, name: str, hardware: SystolicArray):
         raise Exception("Not a conv2d Layer!")
         # Replace the convolution layer with the custom MyConv2D class
 
+    conv_layer = layer
     new_conv_layer = SystolicConvolution(conv_layer.in_channels, conv_layer.out_channels,
                                          conv_layer.kernel_size, conv_layer.stride,
                                          conv_layer.padding, conv_layer.dilation,
