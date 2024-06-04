@@ -23,7 +23,7 @@ MULTIPROCESSING = True
 
 class SystolicConvolution(nn.Conv2d):
 
-    def __init__(self, *args, hardware: SystolicArray = None, **kwargs):
+    def __init__(self, *args, hardware: SystolicArray = None, use_gpu=False, **kwargs):
         super().__init__(*args, **kwargs)
         # Additional initialization if needed
 
@@ -33,12 +33,14 @@ class SystolicConvolution(nn.Conv2d):
 
         self._name = 'SystolicConvolution'  # Custom name attribute
         if hardware is not None:  # if hardware is explicit, then use that!
+            assert use_gpu == hardware.use_gpu, "if hardware is using gpu, also this layer must!"
             self.hw = hardware
         else:  # otherwise, automatically instantiate a new object with good dimensions
             self.hw = SystolicArray(
                 100, 100, 150,
                 projection_matrices.output_stationary,
-                in_dtype=np.dtype(np.int16)
+                in_dtype=np.dtype(np.int16),
+                use_gpu = use_gpu,
             )
             # fault = si.fault_models.StuckAt("a", x=1, y=1, bit=1, polarity=1, msb="last")
         # Set the padding attribute based on the input padding argument
@@ -50,6 +52,9 @@ class SystolicConvolution(nn.Conv2d):
         #   e.g. (-1, f) -> means that fault f will affect every channel
         #        (1, f) -> means that fault f will affect only channel 1
         self.channel_fault_list = []
+
+        # Do we use the gpu?
+        self.use_gpu = use_gpu
 
     def add_fault(self, fault: fault_models.Fault, channel=-1):
         self.injecting += 1
@@ -82,10 +87,17 @@ class SystolicConvolution(nn.Conv2d):
             self.stride[1] + 1)
         return int(output_h), int(output_w)
 
-    def forward(self, input):
+    def forward(self, batch):
         # TODO: Consider the out_channels and the in_channels
         logging.info("Starting forward!")
+        if self.use_gpu:
+            res = _foward_cuda(batch)
+        else
+            res = _forward_with_cpu(batch)
+        
+        return res
 
+    def _forward_with_cpu(self, input)
         '''
         # Calculate padding based on kernel size
         kernel_size_height, kernel_size_width = self.kernel_size

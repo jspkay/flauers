@@ -10,6 +10,10 @@ import bitarray
 from .exceptions import *
 from collections import defaultdict
 
+from . import gpu
+import numba
+import numba.cuda
+
 class SystolicArray:
 
     def __init__(self,
@@ -17,7 +21,8 @@ class SystolicArray:
                  T: np.ndarray,
                  in_dtype: np.dtype = np.dtype(np.int8),
                  mac_dtype: np.dtype = None,
-                 use_old_injection_method=False, custom_matmul=None,
+                 use_old_method=False, use_gpu=False,
+                 custom_matmul=None,
                  ):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
@@ -86,7 +91,8 @@ class SystolicArray:
             # and t_max are the extremes of the set of time points computed as pi * nu (pi is the time-projection vector
             # and nu = (i, j, k) ).
         self.multiplier = np.matmul if custom_matmul is None else custom_matmul
-        self.old_injection_method = use_old_injection_method
+        self.use_old_method = use_old_method
+        self.use_gpu = use_gpu
 
     def get_fault_list(self):
         return self.fault_list
@@ -313,9 +319,18 @@ class SystolicArray:
         # We only can do multiplication of 2D matrices!
         assert len(A.shape) == 2 and len(B.shape) == 2, "matmul only accepts 2D matrices!!!"
 
-        if self.old_injection_method:
+        if self.use_old_method and not self.use_gpu:
             return self._matmul_old(A, B)
-        return self._matmul_new(A, B)
+        if not self.use_old_method and self.use_gpu:
+            return self._matmul_gpu(A, B)
+        if not self.use_old_method and not self.use_gpu:
+            return self._matmul_new(A, B)
+        
+        raise NotImplementedError("The new method has not been implemented on gpu yet!")
+
+    def _matmul_gpu(A, B):
+
+
 
     def _fault_function(self, a: np.ndarray, b: np.ndarray, fault: Fault):
         if fault.line == LineType.a:
