@@ -11,7 +11,7 @@ output_stationary = np.array(
 row_stationary = np.array(
     [
         [1, 0,  0],
-        [0,  0, 1],
+        [0,  0, -1],
         [1,  1, 1]
     ]
 )
