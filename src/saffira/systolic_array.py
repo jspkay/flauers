@@ -2,13 +2,13 @@ import numpy as np
 import uuid
 import logging
 import bitarray
+from collections import defaultdict
 
 from .utils import LineType
 from .fault_models import *  # Contains the class Fault
 from .exceptions import *
 from . import utils
 from . import cpu
-
 
 class SystolicArray:
 
@@ -18,7 +18,9 @@ class SystolicArray:
                  in_dtype: np.dtype = np.dtype(np.int8),
                  mac_dtype: np.dtype = None,
                  optimized = False,
-                 use_legacy = True
+                 use_legacy = True,
+                 # use_old_injection_method=False, 
+                 # custom_matmul=None, approximate_multiplier = None, approximate_adder = None
                  ):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
@@ -31,6 +33,8 @@ class SystolicArray:
         T : projection matrix used for determining the type of systolic array
         in_dtype : represents the type of the input data seen in the hardware. It only corresponds to the type of input and outputs
         mac_dtype: (optional) corresponds to the hardware type used for the accumulation registers. If none, is computed automatically to be 4 times wider than in_dtype
+        computation_method: (optional) corresponds to the computation method used for the multiplication computation, whether made on the GPU or using the traditional slow method of iterating on i, j and k
+        custom_matmul: (optional) corresponds to the custom matrix multiplication operation
         """
 
         # Performance related things
@@ -51,6 +55,9 @@ class SystolicArray:
         self.should_inject = False
         self.fault_list = {}
         self.physical_mapping = {}
+        self.physical_space = []
+        self.physical_PEs = []
+        self.injected_points_list = {}
 
         logging.info(f"[SystolicArray] instantiating a new systolic array...")
         self.N1 = n1
@@ -78,6 +85,13 @@ class SystolicArray:
         # to map the iteartion space to the physical space and we will have a list of iterative points (i, j, k)
         # associated to the physical points (x, y).
         self._iter_to_phy()
+
+        self.computation_time = 1 + (self.N1 + self.N2 + self.N3) - self.T[2,:].sum()
+            # This is the basic formula that says the time for a single computation is (1 + t_max - t_min) where t_min
+            # and t_max are the extremes of the set of time points computed as pi * nu (pi is the time-projection vector
+            # and nu = (i, j, k) ).
+        self.multiplier = np.matmul if custom_matmul is None else custom_matmul
+
 
 ######### CORE #######################################
     def matmul(self, A, B):
@@ -191,19 +205,24 @@ class SystolicArray:
 
         return C
 
-    def _matmul_new(self, A, B):
-        C = A @ B  # This is the golden part
+    def _matmul_new(self, A: np.ndarray, B: np.ndarray):
+        # C = A @ B  # This is the golden part
+        C = self.multiplier(A, B)
+        C_f = np.zeros_like(C)
 
-        # We prepare aF and bF.
-        for nu, fault_list in self._line_faults[LineType.a.value - 1].items():
-            pass
-
-        # Faults in a
-        nus = self._line_faults[LineType.a.value - 1].keys()
-
-        C_g = A_f @ B_f
-
-        C_f = A_f @ B_f
+        for element, accs in self.injected_points_list.items():
+            i, j = element
+            if i >= A.shape[0] or j >= B.shape[1]:
+                continue  # We skip elements not used for this computation
+            ks = accs.keys()
+            fault = list(self.injected_points_list[(i,j)].values())[0]
+            k_min = min(ks)
+            k_max = max(ks)
+            a_bar = A[i, k_min:k_max+1]  # Because of how the mapping on a[i, j, k] is done
+            b_bar = B[k_min:k_max+1, j]
+            c_g = self.multiplier(a_bar, b_bar)  # a_bar @ b_bar
+            C_f[i, j] = c_g - self._fault_function(a_bar, b_bar, fault)
+        return C + C_f
 
     def _matmul_old(self, A, B):
 
@@ -363,7 +382,7 @@ class SystolicArray:
                 for k in range(1, self.N3):
                     nu = np.array([i, j, k])
                     eps = tuple(
-                        self.T @ nu)  # We can't use np.ndarray as a key for the dictionary, so we convert it into tuple
+                        self.T @ nu )  # We can't use np.ndarray as a key for the dictionary, so we convert it into tuple
                     s = eps[0:2]
                     t = eps[2]
                     nu = tuple(nu)
@@ -372,6 +391,8 @@ class SystolicArray:
                         self.physical_mapping.update({s: [(nu, t)]})
                     else:
                         point_list.append((nu, t))
+                    self.physical_space.append( eps )
+                    self.physical_PEs.append( s )
         logging.debug(f"[SystolicArray] iteration space to physical space done:\n{self.physical_mapping}")
         if logging.root.level <= logging.DEBUG:
             from matplotlib import pyplot as plt
@@ -410,17 +431,17 @@ class SystolicArray:
             t_stop = fault.t_stop
             # For each fault we want to inject all the PEs cascading from the first and forwarding the faulty value
             while True:  # injecting the PEs on the same flow_direction
-                logging.debug(f"[SystolicArray] preparing injection for element {s}")
+                # logging.debug(f"[SystolicArray] preparing injection for element {s}")
                 nu_list = self.physical_mapping.get(tuple(s))
                 if nu_list is None:
                     # Given the first element (x, y) is part of the physical space, the other elements are always
                     # distant flow_dirs, so if we find a None it means we got outside :D
-                    logging.debug(f"[SystolicArray] element {s} is not part of the physical space. Breaking")
+                    #logging.debug(f"[SystolicArray] element {s} is not part of the physical space. Breaking")
                     break
 
                 for nu, t in nu_list:  # time loop
                     if t_stop >= t >= t_start:  # This means element nu will be injected
-                        logging.debug(f"iteration {nu} will be injected")
+                        # logging.debug(f"iteration {nu} will be injected")
                         injected_list = self._line_faults[fault.line.value - 1].get(nu)
                         if injected_list is None:
                             self._line_faults[fault.line.value - 1].update({nu: [fault]})
@@ -430,31 +451,55 @@ class SystolicArray:
                 # we follow the next element to be injected given the flow direction of that line
                 s = s + flow_dirs[fault.line.value - 1]
                 if (flow_dirs[fault.line.value - 1] == np.zeros((3, 1))).all():
-                    logging.debug(f"[SystolicArray] element {s} constitutes a stationary variable. Breaking")
+                    # logging.debug(f"[SystolicArray] element {s} constitutes a stationary variable. Breaking")
                     break
                 # starting and stopping time are incremented by one for the next element
                 t_start += 1
                 t_stop += 1
+        print("Injected list")
+        from pprint import pprint
+        # pprint(self._line_faults)
 
         # This is for self._matmul_old_opt
         
 
-        # This is for self._matmul_new
-        phy_space = {}
-        for i in range(1, self.N1):
-            for j in range(1, self.N2):
-                for k in range(1, self.N3):
-                    nu = np.array([i, j, k])
-                    s = self.T @ nu
-                    x = tuple( s[0:2] )
-                    t = s[2]
-                    ddd = phy_space.get(x)
-                    if ddd is None:
-                        phy_space.update({x: {t: nu} })
-        for fault in self.fault_list.values():
+        # This is for _matmul_new
+        injected_points_list = defaultdict(dict)
+        T_det = round(np.linalg.det(self.T))
+        # For each fault we want to inject all the PEs cascading from the first and forwarding the faulty value
+        for fault in self.fault_list.values():  # we don't care about the keys, they are generated with uuid for the user
             s = np.array([fault.x, fault.y])
-            t_start = fault.t_start
+            t_start = fault.t_start if fault.t_start >= 3 else 3  # t_start and t_stop are used for
             t_stop = fault.t_stop
+            while True:
+                # iteration variables
+                        ####  fault time-forwarding
+                logging.debug(f"[SystolicArray] preparing injection for element {s}")
+                x, y = s
+                t = t_start
+                while (x + y + t) % T_det != 0:  # We find the first t such that (i, j, k) is discrete
+                    t += 1
+                # TODO: Refactor injected_points_list to have min-max ranges associated to the faults!
+                while t <= t_stop and t <= self.computation_time:  # Then we compute all the points jumping of T_det
+                    i, j, k = (T_inv @ np.array([x, y, t])).astype(dtype=np.int32)
+                    logging.debug(f"[SystolicArray] iteration {i, j, k} will be injected")
+                    n = injected_points_list[(i, j)].get(k)
+                    if n is None: n = fault
+                    injected_points_list[(i, j)][k] = n # we keep track of how many faults we inject in element (i, j)
+                                              # TODO: we may consider to change n and rather have a fault-list of sort
+                    t += T_det  # we increment the time
+                t_stop += 1  # we consider the fault affecting the element for the next CCs
+                s = s + flow_dirs[fault.line.value - 1]  # moving in space
+                t_start += 1
+                t_stop += 1
+                if tuple(s) not in self.physical_PEs:
+                    # Given the first element (x, y) is part of the physical space, the other elements are always
+                    # distant flow_dirs, so if we find a None it means we got outside :D
+                    logging.debug(f"[SystolicArray] element {s} is not part of the physical space. Breaking")
+                    break
+                if (flow_dirs[fault.line.value - 1] == np.zeros((3, 1))).all():  # Unless we don't
+                    logging.debug(f"[SystolicArray] element {s} constitutes a stationary variable. Breaking")
+                    break
 
             nu_list = []
             for t in range(t_start, t_stop + 1):
@@ -465,8 +510,28 @@ class SystolicArray:
             # nu_start
 
             # self._element_faults
+        # pprint(injected_points_list)
+        self.injected_points_list = injected_points_list
 
-############ Non optimized injection ############################################################
+    def _fault_function(self, a: np.ndarray, b: np.ndarray, fault: Fault):
+        if fault.line == LineType.a:
+            for i in range(len(a)):
+                a[i] = self._inject_value(a,
+                                          fault.should_reverse_bits,
+                                          fault.bit, fault.polarity)
+        if fault.line == LineType.b:
+            for i in range(len(b)):
+                b[i] = self._inject_value(b,
+                                          fault.should_reverse_bits,
+                                          fault.bit, fault.polarity)
+        c = a @ b
+        if fault.line == LineType.c:
+                c = self._inject_value(c,
+                                      fault.should_reverse_bits,
+                                      fault.bit, fault.polarity)
+        return c
+
+
     def _inject_value(self, old_value: np.ndarray,
                       srb: bool = None,  # srb -> Should Reverse Bits (take a look at class Fault)
                       bit: int = None,
