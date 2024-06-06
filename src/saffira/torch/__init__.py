@@ -14,20 +14,21 @@ import numpy as np
 from tqdm.auto import tqdm, trange
 import concurrent.futures as futures
 
-# Configuration variables
-MULTIPROCESSING = True
-
 # ********************************************************************************************
 #                 Here we have to define our Conv2D layer description
 # ********************************************************************************************
 
 class SystolicConvolution(nn.Conv2d):
 
-    def __init__(self, *args, hardware: SystolicArray = None, **kwargs):
+    def __init__(self, *args,
+                 hardware: SystolicArray = None,
+                 multiprocessing = False,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         # Additional initialization if needed
 
         self.device = torch.device("cpu")
+        self.MULTIPROCESSING = multiprocessing
 
         assert self.groups <= 1, "Convolutions with more than 1 groups are not possible for now!"
 
@@ -108,7 +109,7 @@ class SystolicConvolution(nn.Conv2d):
             )
             it = iter(range(batch_size))
 
-            if MULTIPROCESSING:
+            if self.MULTIPROCESSING:
                 # Parallelization
                 with futures.ProcessPoolExecutor() as executor:
                     future_objects = {
