@@ -67,7 +67,7 @@ class SystolicArray:
         self.injection_a = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
         self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
         self.injection_c = np.zeros((self.N1, self.N2, self.N3),
-                    dtype=f"int{nbits}" if in_dtype.kind=="f" else "int{nbits*4}")
+                    dtype=f"int{nbits}" if self.in_dtype.kind=="f" else "int{nbits*4}")
 
         # It is not possible to get all the iterative positions mathematically using P^-1, so we use this function
         # to map the iteartion space to the physical space and we will have a list of iterative points (i, j, k)
