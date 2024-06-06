@@ -2,6 +2,8 @@ import numpy as np
 from numba import njit, int64, int32, int16, int8
 
 # General version for integers
+# Note that the dtype is different for the accumulation and for the inputs
+# so jit should generate a different version for each (in_dtype, mac_dtype) pair
 @njit(nogil=True, cache=True)
 def inject_int(value, bitstring, type):
     if type == 0:  # stuck-at 0
