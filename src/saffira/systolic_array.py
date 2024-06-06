@@ -19,8 +19,7 @@ class SystolicArray:
                  mac_dtype: np.dtype = None,
                  optimized = False,
                  use_legacy = True,
-                 # use_old_injection_method=False, 
-                 # custom_matmul=None, approximate_multiplier = None, approximate_adder = None
+                 # TODO approximate_multiplier = None, approximate_adder = None
                  ):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
@@ -37,35 +36,17 @@ class SystolicArray:
         custom_matmul: (optional) corresponds to the custom matrix multiplication operation
         """
 
-        # Performance related things
-        self.optimized = optimized
-        self.use_legacy = use_legacy
+        logging.info(f"[SystolicArray] instantiating a new systolic array...")
 
         # Physical parameters
-        self.N1 = 0
-        self.N2 = 0
-        self.N3 = 0
-        # Transformation matrix
-        self.T = T
-        # dtypes
-        self.in_dtype = None
-        self.mac_dtype = None
-
-        # injection parameters
-        self.should_inject = False
-        self.fault_list = {}
-        self.physical_mapping = {}
-        self.physical_space = []
-        self.physical_PEs = []
-        self.injected_points_list = {}
-
-        logging.info(f"[SystolicArray] instantiating a new systolic array...")
         self.N1 = n1
         self.N2 = n2
         self.N3 = n3
-        self.T = T
-        self.in_dtype = np.dtype(in_dtype)
+        self.T = T # Transformation matrix
+        logging.info(f"[SystolicArray] N1: {self.N1}, N2: {self.N2}, N3: {self.N3}")
 
+        # dtypes
+        self.in_dtype = np.dtype(in_dtype)
         # Explicit dtype for accumulation without overflow
         if mac_dtype is not None:  # Explicit mac_dtype given
             self.mac_dtype = np.dtype(mac_dtype)
@@ -74,12 +55,19 @@ class SystolicArray:
         else:
             self.mac_dtype = np.dtype(in_dtype)
 
-        # Array parameters
-        logging.info(f"[SystolicArray] N1: {n1}, N2: {n2}, N3: {n3}")
-
         # Injection parameters
         self.should_inject = False
         self.fault_list = {}
+        self.physical_mapping = {}
+        self.physical_space = []
+        self.physical_PEs = []
+        self.injected_points_list = {}
+
+        nbits = self.in_dtype.itemsize*8
+        self.injection_a = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
+        self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
+        self.injection_c = np.zeros((self.N1, self.N2, self.N3),
+                    dtype=f"int{nbits}" if in_dtype.kind=="f" else "int{nbits*4}")
 
         # It is not possible to get all the iterative positions mathematically using P^-1, so we use this function
         # to map the iteartion space to the physical space and we will have a list of iterative points (i, j, k)
@@ -90,7 +78,14 @@ class SystolicArray:
             # This is the basic formula that says the time for a single computation is (1 + t_max - t_min) where t_min
             # and t_max are the extremes of the set of time points computed as pi * nu (pi is the time-projection vector
             # and nu = (i, j, k) ).
-        self.multiplier = np.matmul if custom_matmul is None else custom_matmul
+
+        # TODO Approximated operators
+        # self.multiplier = np.matmul if approximate_multiplier is None else approximate_multiplier
+        # self.adder = np.add
+
+        # Method choice (performance related)
+        self.optimized = optimized
+        self.use_legacy = use_legacy
 
 
 ######### CORE #######################################
@@ -144,6 +139,7 @@ class SystolicArray:
         # We only can do multiplication of 2D matrices!
         assert len(A.shape) == 2 and len(B.shape) == 2, "matmul only accepts 2D matrices!!!"
 
+        ### Actual comptation 
         res = None
         if self.use_legacy and self.optimized:
             res = self._matmul_old_opt(A, B)
@@ -459,8 +455,6 @@ class SystolicArray:
         print("Injected list")
         from pprint import pprint
         # pprint(self._line_faults)
-
-        # This is for self._matmul_old_opt
         
 
         # This is for _matmul_new
