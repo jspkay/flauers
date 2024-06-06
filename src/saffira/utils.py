@@ -104,7 +104,6 @@ def is_comprised(
             return False
     return True
 
-
 def check_improvement(self, a: np.ndarray, b: np.ndarray, improving_direction: np.ndarray):
     """
     This function returns true if b is greater than a in direction improving_direcition. This means that b is better
@@ -140,3 +139,4 @@ def check_improvement(self, a: np.ndarray, b: np.ndarray, improving_direction: n
         return True
 
     return False
+

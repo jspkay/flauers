@@ -16,8 +16,8 @@ output_stationary = np.array(
 # a is the stationary variable
 row_stationary = np.array(
     [
-        [-1, 0,  0],
-        [0,  0, 1],
+        [1, 0,  0],
+        [0,  0, -1],
         [1,  1, 1]
     ]
 )
