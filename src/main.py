@@ -1,7 +1,7 @@
 import numpy as np
 
-import saffira as si
-from saffira import projection_matrices as pm
+import flauers as si
+from flauers import projection_matrices as pm
 import torch
 import torch.nn as nn
 import torchvision as tv
@@ -87,34 +87,43 @@ def lenet_test():
 
         acc = correct / tot
 
+def timing():
+    a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32)
+    b = np.array([[1, 2, 3], [3, 4, 5], [5, 6, 7]], dtype=np.float32)
+
+    hw_opt = si.SystolicArray(10, 10, 10, pm.no_local_reuse, in_dtype=np.int8, optimized=True)
+    hw = si.SystolicArray(10, 10, 10, pm.no_local_reuse, in_dtype=np.int8, optimized=False)
+    f = si.fault_models.StuckAt(line="c", x=0, y=0, bit=3, polarity=1, msb="last")
+
+    c0 = timeit(lambda: a @ b, number=1_000_000)
+    print(f"Standard matmul requires {c0:.4f}s")
+
+    c = timeit(lambda: hw_opt.matmul(a, b), number=1_000_000)
+    print(f"Injected matmul with CPU optimization requires {c:.4f}s")
+
+    c1 = timeit(lambda: hw.matmul(a, b), number=1_000_000)
+    print(f"Old matmul with \"naive\" implementation requires {c1:.4f}s")
 
 def general_matmul(): 
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32)
     b = np.array([[1, 2, 3], [3, 4, 5], [5, 6, 7]], dtype=np.float32)
 
-    hw_opt = si.SystolicArray(10, 10, 10, pm.no_local_reuse, in_dtype=np.float32, optimized=True)
-    hw = si.SystolicArray(10, 10, 10, pm.no_local_reuse, in_dtype=np.float32, optimized=False)
-    f = si.fault_models.StuckAt(line="a", x=0, y=0, bit=2, polarity=1)
-    # hw.add_fault(f)
+    hw_opt = si.SystolicArray(10, 10, 10, pm.no_local_reuse, in_dtype=np.int8, optimized=True)
+    hw = si.SystolicArray(10, 10, 10, pm.no_local_reuse, in_dtype=np.int8, optimized=False)
+    f = si.fault_models.StuckAt(line="c", x=0, y=0, bit=3, polarity=1, msb="last")
+    hw.add_fault(f)
+    hw_opt.add_fault(f)
 
-    if False:
-        c = hw_opt.matmul(a, b)
-        print(c)
-        print("expected:\n", a@b)
-        exit(0)
+    c = hw.matmul(a, b)
+    print("old:\n", c)
+    c = hw_opt.matmul(a, b)
+    print("optimized:\n", c)
+    print("expected:\n", a@b)
 
-    c0 = timeit(lambda: a @ b, number=100_000)
-    print("correct", c0)
-
-    c = timeit(lambda: hw_opt.matmul(a, b), number=100_000)
-    print("new_method", c)
-
-    exit(0)
-    c1 = timeit(lambda: hw.matmul(a, b), number=100_000)
-    print("old_method", c1)
+    
 
 
 if __name__ == "__main__":
-    general_matmul()
+    timing()
 
 

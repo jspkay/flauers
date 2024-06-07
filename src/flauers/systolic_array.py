@@ -17,7 +17,7 @@ class SystolicArray:
                  T: np.ndarray,
                  in_dtype: np.dtype = np.dtype(np.int8),
                  mac_dtype: np.dtype = None,
-                 optimized = False,
+                 optimized = True,
                  use_legacy = True,
                  # TODO approximate_multiplier = None, approximate_adder = None
                  ):
@@ -51,7 +51,7 @@ class SystolicArray:
         if mac_dtype is not None:  # Explicit mac_dtype given
             self.mac_dtype = np.dtype(mac_dtype)
         elif self.in_dtype.kind == "i":
-            self.mac_dtype = np.dtype(in_dtype.kind + str(in_dtype.itemsize * 4))
+            self.mac_dtype = np.dtype(self.in_dtype.kind + str(self.in_dtype.itemsize * 4))
         else:
             self.mac_dtype = np.dtype(in_dtype)
 
@@ -67,7 +67,10 @@ class SystolicArray:
         self.injection_a = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
         self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
         self.injection_c = np.zeros((self.N1, self.N2, self.N3),
-                    dtype=f"int{nbits}" if self.in_dtype.kind=="f" else "int{nbits*4}")
+                    dtype=f"int{nbits}" if self.in_dtype.kind=="f" else f"int{nbits*4}")
+        self.injection_a_type = None
+        # self.injection_b_type = None
+        # self.injection_c_type = None
 
         # It is not possible to get all the iterative positions mathematically using P^-1, so we use this function
         # to map the iteartion space to the physical space and we will have a list of iterative points (i, j, k)
@@ -124,7 +127,7 @@ class SystolicArray:
                 f"The max value is: {np.max(A)}. Have you considered signed and unsigned types?\n"
                 f"Matrix A was: \n{A}")
         # B = B.astype(self.dtype, casting="safe")
-        B_np = np.array(B)
+        B_np = np.array(B, dtype=self.in_dtype)
         if not (B_np == B).all():
             raise CastingError(
                 f"Couldn't convert B from {type(B)} to {self.in_dtype} because some values are greater than admissible."
@@ -146,8 +149,9 @@ class SystolicArray:
         elif self.use_legacy and not self.optimized:
             res = self._matmul_old(A, B)
         elif not self.use_legacy and self.optimized:
-            raise NotImplementedError("This feature has not yet been implemented. You can't use use_legacy=False and optimized=True")
+            raise NotImplementedError("This feature has not yet been implemented. You can't use use_legacy=False")
         else: #not self.use_legacy and not self.optimized
+            raise NotImplementedError("This feature has not yet been implemented. You can't use use_legacy=False")
             res = self._matmul_new(A, B)
         return res
 
@@ -170,24 +174,30 @@ class SystolicArray:
         logging.info(f"[SystolicArray] requirements OK!")
 
         C = np.zeros((N1-1, N2-1), dtype=self.mac_dtype)
+
         if self.in_dtype.name == "float32":
-            inj_a = np.zeros((N1, N2, N3), dtype=np.int32)
-            inj_b = np.zeros((N1, N2, N3), dtype=np.int32)
-            inj_c = np.zeros((N1, N2, N3), dtype=np.int32)
-            #inj_c[1, 1, 1] = 0xFFFFFFFF
-            #inj_c[1, 1, 2] = 0xFFFFFFFF
-            # inj_c[1, 1, 3] = 0xFFFFFFFF
-            cpu.injected_matmul_old_f32(A, B, C,
-                inj_a, inj_b, inj_c, 0)
+            cpu.injected_matmul_old_f32(
+                A, B, C,
+                self.injection_a,
+                self.injection_b,
+                self.injection_c, self.injection_a_type)
+
         elif self.in_dtype.name == "float64":
-            inj_c = np.zeros((N1, N2, N3))
-            cpu.injected_matmul_old_f64(A, B, C,
-                np.zeros((N1, N2, N3)), np.zeros((N1, N2, N3)), inj_c, 0)
-            raise Exception("ERROR GENERIC")
+            cpu.injected_matmul_old_f64(
+                A, B, C,
+                self.injection_a,
+                self.injection_b,
+                self.injection_c,
+                self.injection_a_type)
+            
         elif self.in_dtype.kind == "i":
-            cpu.injected_matmul_old_int(A, B, C,
-                np.zeros((N1, N2, N3)), np.zeros((N1, N2, N3)), np.zeros((N1, N2, N3)), 0)
-            raise Exception("ERROR GENERIC")
+            cpu.injected_matmul_old_int(
+                A, B, C,
+                self.injection_a,
+                self.injection_b,
+                self.injection_c,
+                self.injection_a_type)
+            
         else:
             raise Exception(f"Unsupported dtype: {self.in_dtype}")
         """ print(A.shape)
@@ -202,8 +212,8 @@ class SystolicArray:
         return C
 
     def _matmul_new(self, A: np.ndarray, B: np.ndarray):
-        # C = A @ B  # This is the golden part
-        C = self.multiplier(A, B)
+        C = A @ B  # This is the golden part
+        # C = self.multiplier(A, B)
         C_f = np.zeros_like(C)
 
         for element, accs in self.injected_points_list.items():
@@ -216,7 +226,8 @@ class SystolicArray:
             k_max = max(ks)
             a_bar = A[i, k_min:k_max+1]  # Because of how the mapping on a[i, j, k] is done
             b_bar = B[k_min:k_max+1, j]
-            c_g = self.multiplier(a_bar, b_bar)  # a_bar @ b_bar
+            # c_g = self.multiplier(a_bar, b_bar)  # a_bar @ b_bar
+            c_g = a_bar @ b_bar
             C_f[i, j] = c_g - self._fault_function(a_bar, b_bar, fault)
         return C + C_f
 
@@ -452,7 +463,7 @@ class SystolicArray:
                 # starting and stopping time are incremented by one for the next element
                 t_start += 1
                 t_stop += 1
-        print("Injected list")
+        # print("Injected list")
         from pprint import pprint
         # pprint(self._line_faults)
         
@@ -476,11 +487,28 @@ class SystolicArray:
                 # TODO: Refactor injected_points_list to have min-max ranges associated to the faults!
                 while t <= t_stop and t <= self.computation_time:  # Then we compute all the points jumping of T_det
                     i, j, k = (T_inv @ np.array([x, y, t])).astype(dtype=np.int32)
+
+                    # this is for _matmul_old_opt
+                    nbits = self.in_dtype.itemsize*8
+                    shift = fault.bit if not fault.should_reverse_bits else nbits-fault.bit-1
+                    if i < self.N1 and j < self.N2 and k < self.N3:
+                        if fault.line == LineType.a:
+                            self.injection_a[i, j, k] |= 1 << shift
+                        elif fault.line == LineType.b:
+                            self.injection_b[i, j, k] |= 1 << shift
+                        elif fault.line == LineType.c:
+                            nbits = self.mac_dtype.itemsize*8
+                            shift = fault.bit if not fault.should_reverse_bits else nbits-fault.bit-1
+                            self.injection_c[i, j, k] |= 1 << shift
+                        self.injection_a_type = fault.polarity
+
+                    # this is for _matmul_new
                     logging.debug(f"[SystolicArray] iteration {i, j, k} will be injected")
                     n = injected_points_list[(i, j)].get(k)
                     if n is None: n = fault
                     injected_points_list[(i, j)][k] = n # we keep track of how many faults we inject in element (i, j)
                                               # TODO: we may consider to change n and rather have a fault-list of sort
+
                     t += T_det  # we increment the time
                 t_stop += 1  # we consider the fault affecting the element for the next CCs
                 s = s + flow_dirs[fault.line.value - 1]  # moving in space

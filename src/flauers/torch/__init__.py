@@ -215,35 +215,40 @@ def compatible_layers(model: torch.nn.Module):
             res.append(name)
     return res
 
-def replace_layer(model: torch.nn.Module, name: str, hardware: SystolicArray):
-    layer = model.get_submodule(name)
-    layer_name = name.split(".")[-1]
-    parent_name = '.'.join(name.split(".")[:-1])
-    parent = model.get_submodule(parent_name)
+def replace_layer(model: torch.nn.Module, names: str|list, hardware: SystolicArray):
+    if isinstance(names, str):
+        names = [names]
 
-    if not isinstance(layer, nn.Conv2d):
-        raise Exception("Not a conv2d Layer!")
+    for name in names:
+        layer = model.get_submodule(name)
+        layer_name = name.split(".")[-1]
+        parent_name = '.'.join(name.split(".")[:-1])
+        parent = model.get_submodule(parent_name)
+
+        if not isinstance(layer, nn.Conv2d):
+            raise Exception("Not a conv2d Layer!")
+            
         # Replace the convolution layer with the custom MyConv2D class
+        conv_layer = layer
+        new_conv_layer = SystolicConvolution(conv_layer.in_channels, conv_layer.out_channels,
+                                            conv_layer.kernel_size, conv_layer.stride,
+                                            conv_layer.padding, conv_layer.dilation,
+                                            conv_layer.groups, conv_layer.bias is not None,
+                                            hardware=hardware)
 
-    conv_layer = layer
-    new_conv_layer = SystolicConvolution(conv_layer.in_channels, conv_layer.out_channels,
-                                         conv_layer.kernel_size, conv_layer.stride,
-                                         conv_layer.padding, conv_layer.dilation,
-                                         conv_layer.groups, conv_layer.bias is not None,
-                                         hardware=hardware)
+        # Copy the weights and biases from the original layer to the new layer
+        new_conv_layer.weight.data = conv_layer.weight.data.clone()
+        new_conv_layer.load_weights(conv_layer.weight.data.clone())
+        if conv_layer.bias is not None:
+            new_conv_layer.bias.data = conv_layer.bias.data.clone()
 
-    # Copy the weights and biases from the original layer to the new layer
-    new_conv_layer.weight.data = conv_layer.weight.data.clone()
-    new_conv_layer.load_weights(conv_layer.weight.data.clone())
-    if conv_layer.bias is not None:
-        new_conv_layer.bias.data = conv_layer.bias.data.clone()
+        # change the layer
+        setattr(parent, layer_name, new_conv_layer)
 
-    # change the layer
-    setattr(parent, layer_name, new_conv_layer)
+        # Update the layer name in the model
+        new_conv_layer._get_name = new_conv_layer._get_name
 
-    # Update the layer name in the model
-    new_conv_layer._get_name = new_conv_layer._get_name
-
+    return model
 
 # ********************************************************************************************
 #            This function extracts the Conv2D layers of the network architecture
