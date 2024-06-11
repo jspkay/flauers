@@ -11,7 +11,7 @@ import logging
 import torch
 import torch.nn as nn
 import numpy as np
-from tqdm.auto import tqdm, trange
+from tqdm.notebook import tqdm, trange
 import concurrent.futures as futures
 
 # ********************************************************************************************
@@ -46,6 +46,11 @@ class SystolicConvolution(nn.Conv2d):
         #self.padding = padding
         self.weights = None
         self.injecting = 0
+
+        # padding argument
+        if (len(args) >=5 and args[4] == "valid") or (
+                kwargs.get("padding") == "valid" ):
+            self.padding = (0, 0)
 
         # Each element of the list should be a couple with the number of the channel and the fault:
         #   e.g. (-1, f) -> means that fault f will affect every channel
@@ -104,7 +109,7 @@ class SystolicConvolution(nn.Conv2d):
             result = torch.zeros((batch_size, self.out_channels, *out_shape))
 
             # print(f"[SystolicConvolution] starting batch-processing{'with injection!' if self.injecting >= 1 else ''}")
-            bar = trange( 0, batch_size, leave=False, dynamic_ncols=True,
+            bar = trange(0, batch_size, leave=False, dynamic_ncols=True,
                          desc=f"[SystolicConvolution] batched {'injected' if self.injecting >= 1 else ''}", 
             )
             it = iter(range(batch_size))
@@ -215,7 +220,7 @@ def compatible_layers(model: torch.nn.Module):
             res.append(name)
     return res
 
-def replace_layer(model: torch.nn.Module, names: str|list, hardware: SystolicArray):
+def replace_layers(model: torch.nn.Module, names: str|list, hardware: SystolicArray):
     if isinstance(names, str):
         names = [names]
 
@@ -230,11 +235,15 @@ def replace_layer(model: torch.nn.Module, names: str|list, hardware: SystolicArr
             
         # Replace the convolution layer with the custom MyConv2D class
         conv_layer = layer
-        new_conv_layer = SystolicConvolution(conv_layer.in_channels, conv_layer.out_channels,
-                                            conv_layer.kernel_size, conv_layer.stride,
-                                            conv_layer.padding, conv_layer.dilation,
-                                            conv_layer.groups, conv_layer.bias is not None,
-                                            hardware=hardware)
+        new_conv_layer = SystolicConvolution( in_channels = conv_layer.in_channels,
+                                              out_channels = conv_layer.out_channels,
+                                              kernel_size = conv_layer.kernel_size, 
+                                              stride = conv_layer.stride,
+                                              padding = conv_layer.padding,
+                                              dilation = conv_layer.dilation,
+                                              groups = conv_layer.groups,
+                                              bias = conv_layer.bias is not None,
+                                              hardware=hardware )
 
         # Copy the weights and biases from the original layer to the new layer
         new_conv_layer.weight.data = conv_layer.weight.data.clone()
@@ -249,6 +258,10 @@ def replace_layer(model: torch.nn.Module, names: str|list, hardware: SystolicArr
         new_conv_layer._get_name = new_conv_layer._get_name
 
     return model
+
+
+
+######### Soon to be depracated #############################################################
 
 # ********************************************************************************************
 #            This function extracts the Conv2D layers of the network architecture
@@ -278,10 +291,14 @@ def replace_conv2d_layer(model, layer_num, hardware: SystolicArray = None):
 
     if isinstance(conv_layer, nn.Conv2d):
         # Replace the convolution layer with the custom MyConv2D class
-        new_conv_layer = SystolicConvolution(conv_layer.in_channels, conv_layer.out_channels,
-                                             conv_layer.kernel_size, conv_layer.stride,
-                                             conv_layer.padding, conv_layer.dilation,
-                                             conv_layer.groups, conv_layer.bias is not None,
+        new_conv_layer = SystolicConvolution(in_channels=conv_layer.in_channels,
+                                             out_channels=conv_layer.out_channels,
+                                             kernel_size=conv_layer.kernel_size, 
+                                             stride=conv_layer.stride,
+                                             padding=conv_layer.padding,
+                                             dilation=conv_layer.dilation,
+                                             groups=conv_layer.groups, 
+                                             bias=conv_layer.bias is not None,
                                              hardware=hardware)
 
         # Copy the weights and biases from the original layer to the new layer

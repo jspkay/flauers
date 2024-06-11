@@ -68,7 +68,7 @@ class SystolicArray:
         self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
         self.injection_c = np.zeros((self.N1, self.N2, self.N3),
                     dtype=f"int{nbits}" if self.in_dtype.kind=="f" else f"int{nbits*4}")
-        self.injection_a_type = None
+        self.injection_a_type = 0
         # self.injection_b_type = None
         # self.injection_c_type = None
 
@@ -123,14 +123,14 @@ class SystolicArray:
         A_np = np.array(A, dtype=self.in_dtype)
         if not (A_np == A).all():
             raise CastingError(
-                f"Couldn't convert A from {type(A)} to {self.in_dtype} because some values are greater than admissible.\n"
+                f"Couldn't convert A from {A.dtype} to {self.in_dtype}. Maybe some values are greater than admissible?\n"
                 f"The max value is: {np.max(A)}. Have you considered signed and unsigned types?\n"
                 f"Matrix A was: \n{A}")
         # B = B.astype(self.dtype, casting="safe")
         B_np = np.array(B, dtype=self.in_dtype)
         if not (B_np == B).all():
             raise CastingError(
-                f"Couldn't convert B from {type(B)} to {self.in_dtype} because some values are greater than admissible."
+                f"Couldn't convert B from {B.dtype} to {self.in_dtype}. Maybe some values are greater than admissible?"
                 f"Matrix B was: \n{B}")
 
         A = A_np
@@ -375,7 +375,17 @@ class SystolicArray:
         self._preperare_injection_parameters()
         self.should_inject = False
 
+        nbits = self.in_dtype.itemsize*8
+        self.injection_a = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
+        self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
+        self.injection_c = np.zeros((self.N1, self.N2, self.N3),
+                    dtype=f"int{nbits}" if self.in_dtype.kind=="f" else f"int{nbits*4}")
+        self.injection_a_type = 0
+
     def clear_single_fault(self, id):
+        if self.use_legacy and self.optimized:
+            raise NotImplementedError("This feature is not available yet when using use_legacy=True and optimized=True")
+
         self.fault_list.pop(id)
         self.should_inject = self.fault_list.__len__() == 0
         self._preperare_injection_parameters()
