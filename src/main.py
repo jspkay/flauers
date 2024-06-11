@@ -26,4 +26,3 @@ if __name__ == "__main__":
     print("old_method", c)
     print("new_method", c1)
     print( (c0 == c1).all() )
-

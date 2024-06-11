@@ -272,9 +272,3 @@ class Tests(unittest.TestCase):
     def test_old_new_method(self):
         a, b = test_old_new_method()
         self.assertTrue( a == b )
-
-if __name__ == "__main__":
-    #test_weight_stationary()
-    a, b = test_old_new_method()
-    print(a == b)
-    exit(0)
