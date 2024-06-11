@@ -121,9 +121,15 @@ def general_matmul():
     print("expected:\n", a@b)
 
     
+def prova():
+    A = np.array([[1,2,3], [4,5,6], [7,8,9], [10, 11, 12]], dtype=np.int8)
+    B = np.array([[1,2,3,4], [5,6,7,8], [9,10,11,12]], dtype=np.int8)
 
+    hw = si.SystolicArray(10, 10, 10, pm.output_stationary)
+    C = hw.matmul(A, B)
+    print(C)
 
 if __name__ == "__main__":
-    timing()
+    prova()
 
 
