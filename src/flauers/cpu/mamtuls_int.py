@@ -41,7 +41,7 @@ def injected_matmul_old_int(A, B, C,
             C[i-1, j-1] = c_tmp
 
 
-###### Single Threaded #################################################
+###### Multi Threaded #################################################
 
 @numba.njit(nogil=True, cache=False, parallel=True)
 def injected_matmul_old_int_parallel(A, B, C,

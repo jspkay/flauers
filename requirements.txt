@@ -2,3 +2,5 @@ bitarray
 numpy
 numba
 torch
+tqdm
+ipywidgets
