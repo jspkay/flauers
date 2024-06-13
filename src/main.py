@@ -1,6 +1,8 @@
 import numpy as np
 
 import flauers as si
+import flauers.torch
+si.torch = flauers.torch
 from flauers import projection_matrices as pm
 import torch
 import torch.nn as nn
@@ -61,8 +63,10 @@ def lenet_test():
     ])
 
     mnist_test = tv.datasets.MNIST(".", download=True, train=False, transform=pil_to_tensor)
-    validation_loader = torch.utils.data.DataLoader(mnist_test, batch_size = 2000, shuffle=False, num_workers=4, pin_memory=True)
+    validation_loader = torch.utils.data.DataLoader(mnist_test, batch_size = 5, shuffle=False, num_workers=4, pin_memory=True)
 
+    tot = 0
+    correct = 0
     with torch.no_grad():
         for img in validation_loader:
             inputs, labels = img
@@ -70,11 +74,15 @@ def lenet_test():
             tot += len(labels)
             correct += (outputs.argmax(1) == labels.to("cpu")).float().sum()
 
+            break
+
         acc = correct / tot
     print("model accuracy is ", acc.item()*100)
 
-    hw = sa.SystolicArray(30, 30, 300, sa.projection_matrices.output_stationary, in_dtype=np.float32, mac_dtype=np.float32)
-    sa.torch.replace_conv2d_layer(model, 1, hw)
+    hw = si.SystolicArray(30, 30, 300, si.projection_matrices.output_stationary, in_dtype=np.float32, mac_dtype=np.float32)
+    compatible = si.torch.compatible_layers(model)
+    print(compatible)
+    si.torch.replace_layers(model, compatible, hardware = hw)
     model.eval()
 
     with torch.no_grad():
@@ -85,6 +93,7 @@ def lenet_test():
             tot += len(labels)
             correct += (outputs.argmax(1) == labels.to(torch.device("cpu")).float().sum())
 
+            break
         acc = correct / tot
 
 def timing():
@@ -130,6 +139,6 @@ def prova():
     print(C)
 
 if __name__ == "__main__":
-    prova()
+    lenet_test()
 
 

@@ -11,12 +11,57 @@ import logging
 import torch
 import torch.nn as nn
 import numpy as np
-from tqdm.notebook import tqdm, trange
+from tqdm.autonotebook import tqdm, trange
 import concurrent.futures as futures
 
 # ********************************************************************************************
 #                 Here we have to define our Conv2D layer description
 # ********************************************************************************************
+
+class SystolicLinear(nn.Linear):
+    def __init__(self, *args,
+                hardware: SystolicArray = None,
+                **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._name = 'SystolicLinear'
+        if hardware is not None:
+            self.hw = hardware
+        else:
+            self.hw = SystolicArray(
+                100, 100, 150,
+                projection_matrices.output_stationary,
+                in_dtype=np.dtype(np.int16)
+            )
+
+        self.weight = None
+        self.injecting = 0
+
+    def load_weights(self, weights):
+        # Just for compatibility. Will be removed in the future.
+        pass
+
+    def forward(self, fmap):
+        weight = np.transpose(self.weight)
+        if len(fmap.shape) == 2: # batched inputs
+            batch_size = fmap.shape[0]
+            result = torch.zeros((batch_size, self.out_features))
+            bar = trange(0, batch_size, leave=False, dynamic_ncols=True,
+                         desc=f"[SystolicLinear] batched {'injected' if self.injecting >= 1 else ''}", 
+            )
+            it = iter(range(batch_size))
+
+            for batch_index in it:
+                result[batch_index, :] = self.hw.matmul(fmap, weight) + self.bias
+                bar.update(1)
+
+            bar.close()
+            del batch_size
+        else: # unbatched input
+            result = self.hw.matmul(fmap, weight) + self.bias
+        
+        return result
+
 
 class SystolicConvolution(nn.Conv2d):
 
@@ -130,8 +175,8 @@ class SystolicConvolution(nn.Conv2d):
                         result[index, :, :, :] = r
             else:
                 for batch_index in it:
-                    bar.update(1)
                     result[batch_index, :, :, :] = self._1grouping_conv(input[batch_index], out_shape)
+                    bar.update(1)
 
             bar.close()
             del out_shape
@@ -216,7 +261,9 @@ class SystolicConvolution(nn.Conv2d):
 def compatible_layers(model: torch.nn.Module):
     res = []
     for name, module in model.named_modules():
-        if isinstance(module, torch.nn.Conv2d):
+        if isinstance(module, torch.nn.Conv2d) or(
+            isinstance(module, torch.nn.Linear)
+        ):
             res.append(name)
     return res
 
@@ -225,37 +272,45 @@ def replace_layers(model: torch.nn.Module, names: str|list, hardware: SystolicAr
         names = [names]
 
     for name in names:
+        logging.debug(f"[torch] Replacing layer {name}")
         layer = model.get_submodule(name)
         layer_name = name.split(".")[-1]
         parent_name = '.'.join(name.split(".")[:-1])
         parent = model.get_submodule(parent_name)
-
-        if not isinstance(layer, nn.Conv2d):
-            raise Exception("Not a conv2d Layer!")
             
-        # Replace the convolution layer with the custom MyConv2D class
-        conv_layer = layer
-        new_conv_layer = SystolicConvolution( in_channels = conv_layer.in_channels,
-                                              out_channels = conv_layer.out_channels,
-                                              kernel_size = conv_layer.kernel_size, 
-                                              stride = conv_layer.stride,
-                                              padding = conv_layer.padding,
-                                              dilation = conv_layer.dilation,
-                                              groups = conv_layer.groups,
-                                              bias = conv_layer.bias is not None,
-                                              hardware=hardware )
+        if isinstance(layer, nn.Conv2d):
+            # Replace the convolution layer with the custom MyConv2D class
+            conv_layer = layer
+            new_layer = SystolicConvolution( in_channels = conv_layer.in_channels,
+                                                out_channels = conv_layer.out_channels,
+                                                kernel_size = conv_layer.kernel_size, 
+                                                stride = conv_layer.stride,
+                                                padding = conv_layer.padding,
+                                                dilation = conv_layer.dilation,
+                                                groups = conv_layer.groups,
+                                                bias = conv_layer.bias is not None,
+                                                hardware=hardware )
+        elif isinstance(layer, nn.Linear):
+            new_layer = SystolicLinear( in_features = layer.in_features,
+                                        out_features = layer.out_features,
+                                        bias = layer.bias is not None,
+                                        hardware=hardware)
+        else:
+            raise Exception(f"The requested layer {name} is neither a Conv2d nor a Linear.")
+
 
         # Copy the weights and biases from the original layer to the new layer
-        new_conv_layer.weight.data = conv_layer.weight.data.clone()
-        new_conv_layer.load_weights(conv_layer.weight.data.clone())
-        if conv_layer.bias is not None:
-            new_conv_layer.bias.data = conv_layer.bias.data.clone()
+        new_layer.weight = nn.Parameter( layer.weight.clone() )
+        # new_layer.weight.data = layer.weight.data.clone()
+        new_layer.load_weights(layer.weight.data.clone())
+        if layer.bias is not None:
+            new_layer.bias.data = layer.bias.data.clone()
 
         # change the layer
-        setattr(parent, layer_name, new_conv_layer)
+        setattr(parent, layer_name, new_layer)
 
         # Update the layer name in the model
-        new_conv_layer._get_name = new_conv_layer._get_name
+        new_layer._get_name = new_layer._get_name
 
     return model
 
