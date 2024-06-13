@@ -121,14 +121,14 @@ class SystolicArray:
         # Would be nice to use the astype method,
         # but it doesn't check dynamically whether the values fit in the new type
         A_np = np.array(A, dtype=self.in_dtype)
-        if not (A_np == A).all():
+        if not np.equal(A_np, A).all():
             raise CastingError(
                 f"Couldn't convert A from {A.dtype} to {self.in_dtype}. Maybe some values are greater than admissible?\n"
                 f"The max value is: {np.max(A)}. Have you considered signed and unsigned types?\n"
                 f"Matrix A was: \n{A}")
         # B = B.astype(self.dtype, casting="safe")
         B_np = np.array(B, dtype=self.in_dtype)
-        if not (B_np == B).all():
+        if not np.equal(B_np, B).all():
             raise CastingError(
                 f"Couldn't convert B from {B.dtype} to {self.in_dtype}. Maybe some values are greater than admissible?"
                 f"Matrix B was: \n{B}")
@@ -410,8 +410,8 @@ class SystolicArray:
                         point_list.append((nu, t))
                     self.physical_space.append( eps )
                     self.physical_PEs.append( s )
-        logging.debug(f"[SystolicArray] iteration space to physical space done:\n{self.physical_mapping}")
-        if logging.root.level <= logging.DEBUG:
+        # logging.debug(f"[SystolicArray] iteration space to physical space done:\n{self.physical_mapping}")
+        if logging.root.level <= logging.DEBUG and False:
             from matplotlib import pyplot as plt
             plt.set_loglevel("info")
             points = np.array(list(self.physical_mapping.keys()))
