@@ -9,23 +9,23 @@ from .injects import inject_int
 def injected_matmul_old_int(A, B, C,
                         inject_A, inject_B, inject_C, injection_type):
 
-    N1 = A.shape[0] + 1
-    N2 = B.shape[1] + 1
-    N3 = A.shape[1] + 1
+    N1 = A.shape[0]
+    N2 = B.shape[1]
+    N3 = A.shape[1]
 
-    for i in range(1, N1):
-        for j in range(1, N2):
+    for i in range(0, N1):
+        for j in range(0, N2):
             c_tmp = 0
-            for k in range(1, N3):
+            for k in range(0, N3):
 
                 a_value = inject_int(
-                    A[i-1, k-1],
+                    A[i, k],
                     inject_A[i, j, k],
                     injection_type
                 )
 
                 b_value = inject_int(
-                    B[k-1, j-1],
+                    B[k, j],
                     inject_B[i, j, k],
                     injection_type
                 )
@@ -38,7 +38,7 @@ def injected_matmul_old_int(A, B, C,
                     injection_type,
                 )
 
-            C[i-1, j-1] = c_tmp
+            C[i, j] = c_tmp
 
 
 ###### Multi Threaded #################################################
@@ -47,23 +47,23 @@ def injected_matmul_old_int(A, B, C,
 def injected_matmul_old_int_parallel(A, B, C,
                         inject_A, inject_B, inject_C, injection_type):
 
-    N1 = A.shape[0] + 1
-    N2 = B.shape[1] + 1
-    N3 = A.shape[1] + 1
+    N1 = A.shape[0]
+    N2 = B.shape[1]
+    N3 = A.shape[1]
 
-    for i in numba.prange(1, N1):
-        for j in numba.prange(1, N2):
+    for i in numba.prange(0, N1):
+        for j in numba.prange(0, N2):
             c_tmp = 0
-            for k in range(1, N3):
+            for k in range(0, N3):
 
                 a_value = inject_int(
-                    A[i-1, k-1],
+                    A[i, k],
                     inject_A[i, j, k],
                     injection_type
                 )
 
                 b_value = inject_int(
-                    B[k-1, j-1],
+                    B[k, j],
                     inject_B[i, j, k],
                     injection_type
                 )
@@ -76,4 +76,4 @@ def injected_matmul_old_int_parallel(A, B, C,
                     injection_type,
                 )
 
-            C[i-1, j-1] = c_tmp
+            C[i, j] = c_tmp
