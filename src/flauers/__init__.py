@@ -1,12 +1,13 @@
-import numpy as np
 from . import utils
 from . import lowerings
+from . import tilings
 from . import systolic_array
 from . import projection_matrices
 from . import fault_models
-from typing import overload
-import logging
 from . import exceptions
+
+import numpy as np
+import logging
 
 SystolicArray = systolic_array.SystolicArray
 ProjectionMatrices = projection_matrices
@@ -113,11 +114,11 @@ def matmul(A, B,
            **kwargs
            ) -> np.ndarray:
     if N1 == -1:
-        N1 = A.shape[0] + 1
+        N1 = A.shape[0]
     if N2 == -1:
-        N2 = B.shape[1] + 1
+        N2 = B.shape[1]
     if N3 == -1:
-        N3 = B.shape[0] + 1
+        N3 = B.shape[0]
 
     hw = SystolicArray(N1, N2, N3, projection_matrix, **kwargs)
     return hw.matmul(A, B)
