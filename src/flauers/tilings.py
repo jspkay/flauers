@@ -35,13 +35,50 @@ class Tiling:
         N1: Max width - A.shape[0] >= N1 -> 
         """
         
+        # TODO: Add the checks for len(A.shape) == 2 and such
+
         self.A = A
         self.B = B
         self.N1 = N1
         self.N2 = N2
         self.N3 = N3
+
+        self.i = -1
+        self.j = 0
     
     def __iter__(self):
+        ar, ac = self.A.shape
+        br, bc = self.B.shape
+
+        # How many columns ? (column limit)
+        self.ilim = np.ceil( ar / self.N1 )
+        
+        # How many rows ? (row limit)
+        self.jlim = np.ceil( bc / self.N2 )
+
+        # how many iterations  per value ? (iteration limit)
+        self.klim = np.ceil( ac / self.N3 )
+        assert ac <= self.N3, "For now we, Tiling doesn't support N3. Please choose it carefully."
+
         return self
 
     def __next__(self):
+        # Let's only do two dimensions for now
+        self.i += 1
+        if self.i >= self.ilim:
+            self.i = 0
+            self.j += 1
+
+        istart = self.i * self.N1
+        istop = (self.i + 1) * self.N1
+
+        jstart = self.j * self.N2
+        jstop = (self.j+1) * self.N2
+
+        A = self.A[ istart:istop,  : ]
+        B = self.B[ : ,  jstart:jstop]
+        
+        if self.j >= self.jlim:
+            raise StopIteration
+
+        return A, B, istart, jstart
