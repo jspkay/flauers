@@ -21,6 +21,7 @@ import concurrent.futures as futures
 class SystolicLinear(nn.Linear):
     def __init__(self, *args,
                 hardware: SystolicArray = None,
+                titling = False
                 **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -37,6 +38,8 @@ class SystolicLinear(nn.Linear):
         self.weight = None
         self.injecting = 0
 
+        self.tiling = tiling
+
     def load_weights(self, weights):
         # Just for compatibility. Will be removed in the future.
         pass
@@ -52,13 +55,13 @@ class SystolicLinear(nn.Linear):
             it = iter(range(batch_size))
 
             for batch_index in it:
-                result[batch_index, :] = self.hw.matmul(fmap, weight) + self.bias
+                result[batch_index, :] = self.hw.matmul(fmap, weight, tiling=self.tiling) + self.bias
                 bar.update(1)
 
             bar.close()
             del batch_size
         else: # unbatched input
-            result = self.hw.matmul(fmap, weight) + self.bias
+            result = self.hw.matmul(fmap, weight, tiling=self.tiling) + self.bias
         
         return result
 
@@ -68,6 +71,7 @@ class SystolicConvolution(nn.Conv2d):
     def __init__(self, *args,
                  hardware: SystolicArray = None,
                  multiprocessing = False,
+                 tiling = False,
                  **kwargs):
         super().__init__(*args, **kwargs)
         # Additional initialization if needed
@@ -232,6 +236,7 @@ class SystolicConvolution(nn.Conv2d):
                         a, b,
                         lowering=lowerings.S_Im2Col,
                         array=self.hw,
+                        tiling=self.tiling,
                     )
 
                 result[c_out] += convolution

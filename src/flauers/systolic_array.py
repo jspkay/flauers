@@ -20,7 +20,8 @@ class SystolicArray:
                  mac_dtype: np.dtype = None,
                  optimized = True,
                  use_legacy = True,
-                 # TODO approximate_multiplier = None, approximate_adder = None
+                 approximate_matmul = None,
+                 approximate_multiplier = None, approximate_adder = None,
                  ):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
@@ -83,9 +84,10 @@ class SystolicArray:
             # and t_max are the extremes of the set of time points computed as pi * nu (pi is the time-projection vector
             # and nu = (i, j, k) ).
 
-        # TODO Approximated operators
-        # self.multiplier = np.matmul if approximate_multiplier is None else approximate_multiplier
-        # self.adder = np.add
+        # Approximate operators
+        self.multiplier = np.multiply if approximate_multiplier is None else approximate_multiplier
+        self.adder      = np.add if approximate_adder is None else approximate_adder
+        self.matmul     = np.matmul if approximate_matmul is None else approximate_matmul
 
         # Method choice (performance related)
         self.optimized = optimized
@@ -167,6 +169,9 @@ class SystolicArray:
         return res
 
     def _matmul_old_opt(self, A, B):
+        assert self.adder == np.add and self.multiplier == np.multiply and (
+            self.matmul == np.matmul), "It is not possible to use the optimized versions with approximate logic yet!"
+
         ar, ac = A.shape
         br, bc = B.shape
 
@@ -226,8 +231,9 @@ class SystolicArray:
         return C
 
     def _matmul_new(self, A: np.ndarray, B: np.ndarray):
-        C = A @ B  # This is the golden part
-        # C = self.multiplier(A, B)
+        assert self.adder == np.add and self.multiplier == np.multiply, "It is not possible to have use_legacy=False and approximate adders and multipliers.\
+            Please use approximate_matul"
+        C = self.matmul(A, B) # This is the golden part
         C_f = np.zeros_like(C)
 
         for element, accs in self.injected_points_list.items():
@@ -240,12 +246,13 @@ class SystolicArray:
             k_max = max(ks)
             a_bar = A[i, k_min:k_max+1]  # Because of how the mapping on a[i, j, k] is done
             b_bar = B[k_min:k_max+1, j]
-            # c_g = self.multiplier(a_bar, b_bar)  # a_bar @ b_bar
-            c_g = a_bar @ b_bar
+            c_g = self.matmul(a_bar, b_bar)  # a_bar @ b_bar
             C_f[i, j] = c_g - self._fault_function(a_bar, b_bar, fault)
         return C + C_f
 
     def _matmul_old(self, A, B):
+        assert self.matmul==np.matmul, "It is not possible to have have use_legacy=True, optimization=False and use approximate matmul.\
+            Plase use approximate_adder and approximate_multipliers"        
 
         ar, ac = A.shape
         br, bc = B.shape
@@ -307,11 +314,14 @@ class SystolicArray:
                                 b_value = self._inject_value(b_value, fault.should_reverse_bits, fault.bit,
                                                                     fault.polarity)
 
-                    c_tmp = (c_tmp +
-                                  # here the explicit cast is required for avoiding overflow
-                                  a_value.astype(dtype=self.mac_dtype, casting="safe") *
-                                  b_value.astype(dtype=self.mac_dtype, casting="safe")
-                                  )
+                    c_tmp = self.adder(
+                        c_tmp, 
+                        self.multiplier(
+                            # here the explicit cast is required for avoiding overflow
+                            a_value.astype(dtype=self.mac_dtype, casting="safe"), 
+                            b_value.astype(dtype=self.mac_dtype, casting="safe")
+                        )
+                    )
 
                     # Injecting values on line c
                     if self.should_inject:

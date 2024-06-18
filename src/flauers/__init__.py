@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def convolve_with_array(A: np.ndarray, B: np.ndarray,
                         array: SystolicArray,
                         lowering: lowerings.LoLif = lowerings.S_Im2Col,
+                        tiling: bool = false,
                         ) -> np.ndarray:
     """
     Perform convolution between two matrices a and b using a systolic array, such that C = A * B
@@ -41,7 +42,7 @@ def convolve_with_array(A: np.ndarray, B: np.ndarray,
 
     low_A = transformed.lower_activation(A)
     low_B = transformed.lower_kernel(B)
-    result = array.matmul(low_A, low_B)
+    result = array.matmul(low_A, low_B, tiling = tiling)
 
     return transformed.lift(result)
 
@@ -53,6 +54,7 @@ def convolve(A: np.ndarray, B: np.ndarray,
              N2=-1,
              N3=-1,  # TODO: maybe projection_matrix can have its own class 🤷
              projection_matrix: np.ndarray = ProjectionMatrices.output_stationary,
+             tiling: bool = False,
              **kwargs
         ) -> np.ndarray:
     """
@@ -100,7 +102,7 @@ def convolve(A: np.ndarray, B: np.ndarray,
 
     low_A = transformed.lower_activation(A)
     low_B = transformed.lower_kernel(B)
-    result = hw.matmul(low_A, low_B)
+    result = hw.matmul(low_A, low_B, tiling=tiling)
 
     # return low_A @ low_B
     return transformed.lift(result)
@@ -111,6 +113,7 @@ def matmul(A, B,
            N2=-1,
            N3=-1,
            projection_matrix=ProjectionMatrices.output_stationary,
+           tiling: bool = False
            **kwargs
            ) -> np.ndarray:
     if N1 == -1:
@@ -121,5 +124,5 @@ def matmul(A, B,
         N3 = B.shape[0]
 
     hw = SystolicArray(N1, N2, N3, projection_matrix, **kwargs)
-    return hw.matmul(A, B)
+    return hw.matmul(A, B, tiling=tiling)
 
