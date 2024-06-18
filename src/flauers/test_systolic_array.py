@@ -363,10 +363,10 @@ class TestSystolicArrayTiling(unittest.TestCase):
     def test_no_injection_tiling(self):
         self.assertRaises(
             flauers.exceptions.DimensionError,
-            hw.matmul, self.A, self.B,
+            self.hw.matmul, self.A, self.B,
         )
 
-        C = hw.matmul(self.A, self.B, tiling=True)
+        C = self.hw.matmul(self.A, self.B, tiling=True)
 
         self.assertTrue(
             np.allclose( C, self.C)
