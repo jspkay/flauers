@@ -69,7 +69,7 @@ class Fault:
         self.x = x  # This has to be an int!
         self.y = y  # This has to be an int!
 
-        # This should be a string, so that it is possible to parse it
+        # TODO This should be a string, so that it is possible to parse it
         self.t_start, self.t_stop = self._parse_time(time)
         logging.debug(f"[Fault] start_time: {self.t_start}, stop_time: {self.t_stop}")
         # Some examples for the time:
