@@ -69,8 +69,6 @@ def replace_layers(model: torch.nn.Module,
 
 
         # Copy the weights and biases from the original layer to the new layer
-        new_layer.weight = nn.Parameter( layer.weight.clone() )
-        # new_layer.weight.data = layer.weight.data.clone()
         new_layer.load_weights(layer.weight.data.clone())
         if layer.bias is not None:
             new_layer.bias.data = layer.bias.data.clone()
@@ -109,28 +107,19 @@ class SystolicLinear(nn.Linear):
 
         self.tiling = tiling
 
-    def load_weights(self, weights):
-        # Just for compatibility. Will be removed in the future.
-        pass
+    def load_weights(self, weight):
+        self.weight = torch.nn.Parameter(np.transpose(weight))
 
     def forward(self, fmap):
-        weight = np.transpose(self.weight)
-        if len(fmap.shape) == 2: # batched inputs
-            batch_size = fmap.shape[0]
-            result = torch.zeros((batch_size, self.out_features))
-            bar = trange(0, batch_size, leave=False, dynamic_ncols=True,
-                         desc=f"[SystolicLinear] batched {'injected' if self.injecting >= 1 else ''}", 
+        batch_size = fmap.shape[0]
+
+        result = torch.zeros((batch_size, self.out_features))
+        part = self.hw.matmul(
+            fmap.numpy(), 
+            self.weight.numpy(), 
+            tiling=self.tiling 
             )
-            it = iter(range(batch_size))
-
-            for batch_index in it:
-                result[batch_index, :] = self.hw.matmul(fmap, weight, tiling=self.tiling) + self.bias
-                bar.update(1)
-
-            bar.close()
-            del batch_size
-        else: # unbatched input
-            result = self.hw.matmul(fmap, weight, tiling=self.tiling) + self.bias
+        result[:, :] = torch.Tensor(part) + self.bias
         
         return result
 
@@ -198,6 +187,7 @@ class SystolicConvolution(nn.Conv2d):
         # https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html#torch.nn.Conv2d
 
         self.weights = weights
+        self.weight = torch.nn.Parameter(weights)
 
     def _get_out_shape(self, H_in, W_in):
         output_h = np.floor(

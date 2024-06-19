@@ -1,56 +1,22 @@
-import numpy as np
-
 import flauers as si
 import flauers.torch
 si.torch = flauers.torch
 from flauers import projection_matrices as pm
+
 import torch
 import torch.nn as nn
-import torchvision as tv
-from torchvision.transforms import v2
-import torch.nn.functional as F
-import unittest
-import logging
 
+import torch.nn.functional as F
+from torchvision.transforms import v2
+
+import logging
+import numpy as np
+from tqdm.auto import tqdm
 from timeit import timeit
 
 # logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 logging.basicConfig(level=logging.WARNING)
-
-class LeNet(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv1 = nn.Conv2d(1, 6, 5, padding="valid")
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5, padding="valid")
-        self.fc1 = nn.Linear(16 * 4 * 4, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-
-    def forward(self, x):
-        x.to("cpu")
-        x = self.conv1(x).to("cpu")
-        
-        x = self.pool(F.relu(x))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = torch.flatten(x, 1) # flatten all dimensions except batch
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
-
-    def forward_L1(self, x):
-        return self.conv1(x)
-
-    def forward_rest(self, x):
-        x = self.pool(F.relu(x))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = torch.flatten(x, 1) # flatten all dimensions except batch
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
 
 def lenet_test():
     a = LeNet()
@@ -63,38 +29,43 @@ def lenet_test():
     ])
 
     mnist_test = tv.datasets.MNIST(".", download=True, train=False, transform=pil_to_tensor)
-    validation_loader = torch.utils.data.DataLoader(mnist_test, batch_size = 5, shuffle=False, num_workers=4, pin_memory=True)
+    validation_loader = torch.utils.data.DataLoader(mnist_test, batch_size = 128, shuffle=False, num_workers=4, pin_memory=True)
 
     tot = 0
     correct = 0
+    i=0
     with torch.no_grad():
         for img in validation_loader:
             inputs, labels = img
             outputs = model(inputs.to("cpu"))
             tot += len(labels)
             correct += (outputs.argmax(1) == labels.to("cpu")).float().sum()
-
-            break
-
+            if i==2:
+                break
+            i+=1
         acc = correct / tot
     print("model accuracy is ", acc.item()*100)
 
     hw = si.SystolicArray(30, 30, 300, si.projection_matrices.output_stationary, in_dtype=np.float32, mac_dtype=np.float32)
     compatible = si.torch.compatible_layers(model)
     print(compatible)
-    si.torch.replace_layers(model, compatible, hardware = hw)
+    si.torch.replace_layers(model, compatible, hardware = hw, tiling = True)
     model.eval()
 
+    tot = 0
+    correct = 0
+    i = 0
     with torch.no_grad():
-        for img in validation_loader:
+        for img in tqdm(validation_loader):
             inputs, labels = img
             outputs = model(inputs.to("cpu"))
-
             tot += len(labels)
-            correct += (outputs.argmax(1) == labels.to(torch.device("cpu")).float().sum())
-
-            break
+            correct += (outputs.argmax(1) == labels.to("cpu")).float().sum()
+            if i==2:
+                break
+            i+=1
         acc = correct / tot
+    print("model accuracy is ", acc.item()*100)
 
 def timing():
     a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32)
@@ -227,28 +198,4 @@ def physical_space():
     plt.show()
 
 if __name__ == "__main__":
-    N1 = 2
-    N2 = 2
-    N3 = 100
-    hw = flauers.SystolicArray(
-        N1, N2, N3,
-        flauers.projection_matrices.output_stationary
-    )
-
-    A = np.ones( (10, 10), dtype=np.int8)
-    B = np.ones( (10, 10), dtype=np.int8)
-    C = A.astype(np.int32) @ B.astype(np.int32)
-
-
-    f = flauers.fault_models.StuckAt(
-        "c", 
-        x =  1, y = 1,
-        bit = 5, polarity = 1,
-        msb = "last"
-    )
-    hw.add_fault(f)
-
-    Cerr = hw.matmul( A, B, tiling=True )
-
-    print(Cerr)
-    print(C)
+    lenet_test()
