@@ -21,7 +21,7 @@ import concurrent.futures as futures
 class SystolicLinear(nn.Linear):
     def __init__(self, *args,
                 hardware: SystolicArray = None,
-                titling = False
+                titling = False,
                 **kwargs):
         super().__init__(*args, **kwargs)
 

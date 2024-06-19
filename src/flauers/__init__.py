@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 def convolve_with_array(A: np.ndarray, B: np.ndarray,
                         array: SystolicArray,
                         lowering: lowerings.LoLif = lowerings.S_Im2Col,
-                        tiling: bool = false,
+                        tiling: bool = False,
                         ) -> np.ndarray:
     """
     Perform convolution between two matrices a and b using a systolic array, such that C = A * B
@@ -113,7 +113,7 @@ def matmul(A, B,
            N2=-1,
            N3=-1,
            projection_matrix=ProjectionMatrices.output_stationary,
-           tiling: bool = False
+           tiling: bool = False,
            **kwargs
            ) -> np.ndarray:
     if N1 == -1:

@@ -87,7 +87,7 @@ class SystolicArray:
         # Approximate operators
         self.multiplier = np.multiply if approximate_multiplier is None else approximate_multiplier
         self.adder      = np.add if approximate_adder is None else approximate_adder
-        self.matmul     = np.matmul if approximate_matmul is None else approximate_matmul
+        self.mm     = np.matmul if approximate_matmul is None else approximate_matmul
 
         # Method choice (performance related)
         self.optimized = optimized
@@ -170,7 +170,7 @@ class SystolicArray:
 
     def _matmul_old_opt(self, A, B):
         assert self.adder == np.add and self.multiplier == np.multiply and (
-            self.matmul == np.matmul), "It is not possible to use the optimized versions with approximate logic yet!"
+            self.mm == np.matmul), "It is not possible to use the optimized versions with approximate logic yet!"
 
         ar, ac = A.shape
         br, bc = B.shape
@@ -233,7 +233,7 @@ class SystolicArray:
     def _matmul_new(self, A: np.ndarray, B: np.ndarray):
         assert self.adder == np.add and self.multiplier == np.multiply, "It is not possible to have use_legacy=False and approximate adders and multipliers.\
             Please use approximate_matul"
-        C = self.matmul(A, B) # This is the golden part
+        C = self.mm(A, B) # This is the golden part
         C_f = np.zeros_like(C)
 
         for element, accs in self.injected_points_list.items():
@@ -246,12 +246,12 @@ class SystolicArray:
             k_max = max(ks)
             a_bar = A[i, k_min:k_max+1]  # Because of how the mapping on a[i, j, k] is done
             b_bar = B[k_min:k_max+1, j]
-            c_g = self.matmul(a_bar, b_bar)  # a_bar @ b_bar
+            c_g = self.mm(a_bar, b_bar)  # a_bar @ b_bar
             C_f[i, j] = c_g - self._fault_function(a_bar, b_bar, fault)
         return C + C_f
 
     def _matmul_old(self, A, B):
-        assert self.matmul==np.matmul, "It is not possible to have have use_legacy=True, optimization=False and use approximate matmul.\
+        assert self.mm==np.matmul, "It is not possible to have have use_legacy=True, optimization=False and use approximate matmul.\
             Plase use approximate_adder and approximate_multipliers"        
 
         ar, ac = A.shape
