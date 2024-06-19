@@ -28,7 +28,8 @@ def compatible_layers(model: torch.nn.Module):
 def replace_layers(model: torch.nn.Module, 
                     names: str|list[bool], 
                     hardware: SystolicArray,
-                    tiling: bool|list[bool] = False):
+                    tiling: bool|list[bool] = False,
+                    deeper_faults = False ):
 
     if isinstance(names, str):
         names = [names]
