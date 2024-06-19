@@ -162,7 +162,7 @@ def basic_tiling():
         print(b)
         print(a @ b)
         print("----")    
-        C[i:i+N1, j:j+N2] = a@b
+        C[i:i+N1, j:j+N2] += a@b
     
     print("#####")
     print(C)

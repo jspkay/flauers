@@ -32,7 +32,9 @@ class Tiling:
         ---
         A: matrix input A 
         B: matrix input B 
-        N1: Max width - A.shape[0] >= N1 -> 
+        N1: Tile height
+        N2: Tile width
+        N3: Tile depth
         """
         
         # TODO: Add the checks for len(A.shape) == 2 and such
@@ -43,7 +45,8 @@ class Tiling:
         self.N2 = N2
         self.N3 = N3
 
-        self.i = -1
+        self.k = -1
+        self.i = 0
         self.j = 0
     
     def __iter__(self):
@@ -58,16 +61,20 @@ class Tiling:
 
         # how many iterations  per value ? (iteration limit)
         self.klim = np.ceil( ac / self.N3 )
-        assert ac <= self.N3, "For now we, Tiling doesn't support N3. Please choose it carefully."
+        # assert ac <= self.N3, "For now we, Tiling doesn't support N3. Please choose it carefully."
 
         return self
 
     def __next__(self):
         # Let's only do two dimensions for now
-        self.i += 1
-        if self.i >= self.ilim:
-            self.i = 0
-            self.j += 1
+
+        self.k += 1
+        if self.k >= self.klim:
+            self.i += 1
+            self.k = 0
+            if self.i >= self.ilim:
+                self.i = 0
+                self.j += 1
 
         istart = self.i * self.N1
         istop = (self.i + 1) * self.N1
@@ -75,8 +82,11 @@ class Tiling:
         jstart = self.j * self.N2
         jstop = (self.j+1) * self.N2
 
-        A = self.A[ istart:istop,  : ]
-        B = self.B[ : ,  jstart:jstop]
+        kstart = self.k * self.N3
+        kstop = (self.k+1) * self.N3
+
+        A = self.A[ istart:istop,  kstart:kstop ]
+        B = self.B[ kstart:kstop ,  jstart:jstop]
         
         if self.j >= self.jlim:
             raise StopIteration

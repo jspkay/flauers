@@ -164,7 +164,7 @@ class SystolicArray:
             res = matmul(A, B)
         else:
             for a, b, i, j in Tiling(A, B, self.N1, self.N2, self.N3):
-                res[ i:i+self.N1, j:j+self.N2 ] = matmul(a, b)
+                res[ i:i+self.N1, j:j+self.N2 ] += matmul(a, b)
 
         return res
 
