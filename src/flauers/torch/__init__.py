@@ -165,6 +165,8 @@ class SystolicConvolution(nn.Conv2d):
         self.weights = None
         self.injecting = 0
 
+        self.tiling = tiling
+
         # padding argument
         if (len(args) >=5 and args[4] == "valid") or (
                 kwargs.get("padding") == "valid" ):
