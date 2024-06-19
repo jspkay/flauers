@@ -28,7 +28,7 @@ def compatible_layers(model: torch.nn.Module):
 def replace_layers(model: torch.nn.Module, 
                     names: str|list[bool], 
                     hardware: SystolicArray,
-                    tiling: bool|list[bool] = False ):
+                    tiling: bool|list[bool] = False):
 
     if isinstance(names, str):
         names = [names]
@@ -57,7 +57,9 @@ def replace_layers(model: torch.nn.Module,
                                                 groups = conv_layer.groups,
                                                 bias = conv_layer.bias is not None,
                                                 hardware = hardware,
-                                                tiling = tiling[idx])
+                                                tiling = tiling[idx],
+                                                deeper_faults = deeper_faults
+                                                )
         elif isinstance(layer, nn.Linear):
             new_layer = SystolicLinear( in_features = layer.in_features,
                                         out_features = layer.out_features,
