@@ -48,7 +48,7 @@ def replace_layers(model: torch.nn.Module,
         if isinstance(layer, nn.Conv2d):
             # Replace the convolution layer with the custom MyConv2D class
             conv_layer = layer
-            new_layer = SystolicConvolution( in_channels = conv_layer.in_channels,
+            new_layer = SystolicConv2d( in_channels = conv_layer.in_channels,
                                                 out_channels = conv_layer.out_channels,
                                                 kernel_size = conv_layer.kernel_size, 
                                                 stride = conv_layer.stride,
@@ -124,7 +124,7 @@ class SystolicLinear(nn.Linear):
         return result
 
 
-class SystolicConvolution(nn.Conv2d):
+class SystolicConv2d(nn.Conv2d):
 
     def __init__(self, *args,
                  hardware: SystolicArray = None,
@@ -139,7 +139,7 @@ class SystolicConvolution(nn.Conv2d):
 
         assert self.groups <= 1, "Convolutions with more than 1 groups are not possible for now!"
 
-        self._name = 'SystolicConvolution'  # Custom name attribute
+        self._name = 'SystolicConv2d'  # Custom name attribute
         if hardware is not None:  # if hardware is explicit, then use that!
             self.hw = hardware
         else:  # otherwise, automatically instantiate a new object with good dimensions
@@ -220,7 +220,7 @@ class SystolicConvolution(nn.Conv2d):
 
             # print(f"[SystolicConvolution] starting batch-processing{'with injection!' if self.injecting >= 1 else ''}")
             bar = trange(0, batch_size, leave=False, dynamic_ncols=True,
-                         desc=f"[SystolicConvolution] batched {'injected' if self.injecting >= 1 else ''}", 
+                         desc=f"[SystolicConv2d] batched {'injected' if self.injecting >= 1 else ''}", 
             )
             it = iter(range(batch_size))
 
@@ -356,7 +356,7 @@ def replace_conv2d_layer(model, layer_num, hardware: SystolicArray = None):
 
     if isinstance(conv_layer, nn.Conv2d):
         # Replace the convolution layer with the custom MyConv2D class
-        new_conv_layer = SystolicConvolution(in_channels=conv_layer.in_channels,
+        new_conv_layer = SystolicConv2d(in_channels=conv_layer.in_channels,
                                              out_channels=conv_layer.out_channels,
                                              kernel_size=conv_layer.kernel_size, 
                                              stride=conv_layer.stride,
