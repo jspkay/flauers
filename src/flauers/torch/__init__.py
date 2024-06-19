@@ -272,10 +272,19 @@ def compatible_layers(model: torch.nn.Module):
             res.append(name)
     return res
 
-def replace_layers(model: torch.nn.Module, names: str|list, hardware: SystolicArray):
+def replace_layers(model: torch.nn.Module, 
+                    names: str|list[bool], 
+                    hardware: SystolicArray,
+                    tiling: bool|list[bool]):
+
     if isinstance(names, str):
         names = [names]
+    if isinstance(names, bool):
+        tiling = [tiling] * len(names)
 
+    assert len(tiling) == len(names), "Please, give a list in Tiling with the same size of names!"
+
+    idx = 0  # Needed for tiling
     for name in names:
         logging.debug(f"[torch] Replacing layer {name}")
         layer = model.get_submodule(name)
@@ -294,12 +303,14 @@ def replace_layers(model: torch.nn.Module, names: str|list, hardware: SystolicAr
                                                 dilation = conv_layer.dilation,
                                                 groups = conv_layer.groups,
                                                 bias = conv_layer.bias is not None,
-                                                hardware=hardware )
+                                                hardware = hardware,
+                                                tiling = tiling[idx])
         elif isinstance(layer, nn.Linear):
             new_layer = SystolicLinear( in_features = layer.in_features,
                                         out_features = layer.out_features,
                                         bias = layer.bias is not None,
-                                        hardware=hardware)
+                                        hardware=hardware,
+                                        tiling = tiling[idx])
         else:
             raise Exception(f"The requested layer {name} is neither a Conv2d nor a Linear.")
 
@@ -316,6 +327,8 @@ def replace_layers(model: torch.nn.Module, names: str|list, hardware: SystolicAr
 
         # Update the layer name in the model
         new_layer._get_name = new_layer._get_name
+
+        idx += 1  # Needed for tiling
 
     return model
 
