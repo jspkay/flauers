@@ -130,6 +130,7 @@ class SystolicConv2d(nn.Conv2d):
                  hardware: SystolicArray = None,
                  multiprocessing = False,
                  tiling = False,
+                 deeper_faults = False,
                  **kwargs):
         super().__init__(*args, **kwargs)
         # Additional initialization if needed
@@ -153,6 +154,7 @@ class SystolicConv2d(nn.Conv2d):
         #self.padding = padding
         self.weights = None
         self.injecting = 0
+        self.deeper_faults = deeper_faults
 
         self.tiling = tiling
 
@@ -281,9 +283,11 @@ class SystolicConv2d(nn.Conv2d):
                 a = np.array(a)
                 b = np.array(b)
 
-                if self.channel_fault_list == [] or (
-                    self.channel_fault_list[0][0] != c_out and
-                    self.channel_fault_list[0][0] != -1
+                if not self.deeper_faults and (
+                    self.channel_fault_list == [] or (
+                        self.channel_fault_list[0][0] != c_out and
+                        self.channel_fault_list[0][0] != -1
+                    )
                 ):
                     lolif = lowerings.S_Im2Col(a.shape, b.shape)
                     low_a = lolif.lower_activation(a)
