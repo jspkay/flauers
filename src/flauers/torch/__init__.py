@@ -14,14 +14,83 @@ import numpy as np
 from tqdm.autonotebook import tqdm, trange
 import concurrent.futures as futures
 
-# ********************************************************************************************
-#                 Here we have to define our Conv2D layer description
-# ********************************************************************************************
+############### Helper functions ####################
+
+def compatible_layers(model: torch.nn.Module):
+    res = []
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Conv2d) or(
+            isinstance(module, torch.nn.Linear)
+        ):
+            res.append(name)
+    return res
+
+def replace_layers(model: torch.nn.Module, 
+                    names: str|list[bool], 
+                    hardware: SystolicArray,
+                    tiling: bool|list[bool] = False ):
+
+    if isinstance(names, str):
+        names = [names]
+    if isinstance(tiling, bool):
+        tiling = [tiling] * len(names)
+
+    assert len(tiling) == len(names), "Please, give a list in Tiling with the same size of names!"
+
+    idx = 0  # Needed for tiling
+    for name in names:
+        logging.debug(f"[torch] Replacing layer {name}")
+        layer = model.get_submodule(name)
+        layer_name = name.split(".")[-1]
+        parent_name = '.'.join(name.split(".")[:-1])
+        parent = model.get_submodule(parent_name)
+            
+        if isinstance(layer, nn.Conv2d):
+            # Replace the convolution layer with the custom MyConv2D class
+            conv_layer = layer
+            new_layer = SystolicConvolution( in_channels = conv_layer.in_channels,
+                                                out_channels = conv_layer.out_channels,
+                                                kernel_size = conv_layer.kernel_size, 
+                                                stride = conv_layer.stride,
+                                                padding = conv_layer.padding,
+                                                dilation = conv_layer.dilation,
+                                                groups = conv_layer.groups,
+                                                bias = conv_layer.bias is not None,
+                                                hardware = hardware,
+                                                tiling = tiling[idx])
+        elif isinstance(layer, nn.Linear):
+            new_layer = SystolicLinear( in_features = layer.in_features,
+                                        out_features = layer.out_features,
+                                        bias = layer.bias is not None,
+                                        hardware=hardware,
+                                        tiling = tiling[idx])
+        else:
+            raise Exception(f"The requested layer {name} is neither a Conv2d nor a Linear.")
+
+
+        # Copy the weights and biases from the original layer to the new layer
+        new_layer.weight = nn.Parameter( layer.weight.clone() )
+        # new_layer.weight.data = layer.weight.data.clone()
+        new_layer.load_weights(layer.weight.data.clone())
+        if layer.bias is not None:
+            new_layer.bias.data = layer.bias.data.clone()
+
+        # change the layer
+        setattr(parent, layer_name, new_layer)
+
+        # Update the layer name in the model
+        new_layer._get_name = new_layer._get_name
+
+        idx += 1  # Needed for tiling
+
+    return model
+
+####################### Layer definitions ################
 
 class SystolicLinear(nn.Linear):
     def __init__(self, *args,
                 hardware: SystolicArray = None,
-                titling = False,
+                tiling = False,
                 **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -262,75 +331,6 @@ class SystolicConvolution(nn.Conv2d):
                 # ############## END DEBUGGING STUFF """
 
         return result
-
-def compatible_layers(model: torch.nn.Module):
-    res = []
-    for name, module in model.named_modules():
-        if isinstance(module, torch.nn.Conv2d) or(
-            isinstance(module, torch.nn.Linear)
-        ):
-            res.append(name)
-    return res
-
-def replace_layers(model: torch.nn.Module, 
-                    names: str|list[bool], 
-                    hardware: SystolicArray,
-                    tiling: bool|list[bool]):
-
-    if isinstance(names, str):
-        names = [names]
-    if isinstance(names, bool):
-        tiling = [tiling] * len(names)
-
-    assert len(tiling) == len(names), "Please, give a list in Tiling with the same size of names!"
-
-    idx = 0  # Needed for tiling
-    for name in names:
-        logging.debug(f"[torch] Replacing layer {name}")
-        layer = model.get_submodule(name)
-        layer_name = name.split(".")[-1]
-        parent_name = '.'.join(name.split(".")[:-1])
-        parent = model.get_submodule(parent_name)
-            
-        if isinstance(layer, nn.Conv2d):
-            # Replace the convolution layer with the custom MyConv2D class
-            conv_layer = layer
-            new_layer = SystolicConvolution( in_channels = conv_layer.in_channels,
-                                                out_channels = conv_layer.out_channels,
-                                                kernel_size = conv_layer.kernel_size, 
-                                                stride = conv_layer.stride,
-                                                padding = conv_layer.padding,
-                                                dilation = conv_layer.dilation,
-                                                groups = conv_layer.groups,
-                                                bias = conv_layer.bias is not None,
-                                                hardware = hardware,
-                                                tiling = tiling[idx])
-        elif isinstance(layer, nn.Linear):
-            new_layer = SystolicLinear( in_features = layer.in_features,
-                                        out_features = layer.out_features,
-                                        bias = layer.bias is not None,
-                                        hardware=hardware,
-                                        tiling = tiling[idx])
-        else:
-            raise Exception(f"The requested layer {name} is neither a Conv2d nor a Linear.")
-
-
-        # Copy the weights and biases from the original layer to the new layer
-        new_layer.weight = nn.Parameter( layer.weight.clone() )
-        # new_layer.weight.data = layer.weight.data.clone()
-        new_layer.load_weights(layer.weight.data.clone())
-        if layer.bias is not None:
-            new_layer.bias.data = layer.bias.data.clone()
-
-        # change the layer
-        setattr(parent, layer_name, new_layer)
-
-        # Update the layer name in the model
-        new_layer._get_name = new_layer._get_name
-
-        idx += 1  # Needed for tiling
-
-    return model
 
 
 
