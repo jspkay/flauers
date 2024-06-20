@@ -283,8 +283,8 @@ class SystolicConv2d(nn.Conv2d):
 
                 b = self.weights[c_out, c_in, :, :]
 
-                a = np.array(a)
-                b = np.array(b)
+                a = a.numpy()
+                b = b.numpy()
 
                 if not self.deeper_faults and (
                     self.channel_fault_list == [] or (
