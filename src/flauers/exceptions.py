@@ -9,3 +9,8 @@ class CastingError(Exception):
         msg = f"Error during casting of value! "
         message = msg+message
         super().__int__(self, message)
+
+class DimensionError(Exception):
+    def __init__(self, message):
+        msg = f"Dimensions are not compatible! {message}"
+        super().__init__(self, msg)

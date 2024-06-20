@@ -11,27 +11,140 @@ import logging
 import torch
 import torch.nn as nn
 import numpy as np
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm, trange
 import concurrent.futures as futures
 
-# Configuration variables
-MULTIPROCESSING = True
+############### Helper functions ####################
 
-# ********************************************************************************************
-#                 Here we have to define our Conv2D layer description
-# ********************************************************************************************
+def compatible_layers(model: torch.nn.Module):
+    res = []
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Conv2d) or(
+            isinstance(module, torch.nn.Linear)
+        ):
+            res.append(name)
+    return res
 
-class SystolicConvolution(nn.Conv2d):
+def replace_layers(model: torch.nn.Module, 
+                    names: str|list[bool], 
+                    hardware: SystolicArray,
+                    tiling: bool|list[bool] = False,
+                    deeper_faults = False ):
 
-    def __init__(self, *args, hardware: SystolicArray = None, use_gpu=False, **kwargs):
+    if isinstance(names, str):
+        names = [names]
+    if isinstance(tiling, bool):
+        tiling = [tiling] * len(names)
+
+    assert len(tiling) == len(names), "Please, give a list in Tiling with the same size of names!"
+
+    idx = 0  # Needed for tiling
+    for name in names:
+        logging.debug(f"[torch] Replacing layer {name}")
+        layer = model.get_submodule(name)
+        layer_name = name.split(".")[-1]
+        parent_name = '.'.join(name.split(".")[:-1])
+        parent = model.get_submodule(parent_name)
+            
+        if isinstance(layer, nn.Conv2d):
+            # Replace the convolution layer with the custom MyConv2D class
+            conv_layer = layer
+            new_layer = SystolicConv2d( in_channels = conv_layer.in_channels,
+                                                out_channels = conv_layer.out_channels,
+                                                kernel_size = conv_layer.kernel_size, 
+                                                stride = conv_layer.stride,
+                                                padding = conv_layer.padding,
+                                                dilation = conv_layer.dilation,
+                                                groups = conv_layer.groups,
+                                                bias = conv_layer.bias is not None,
+                                                hardware = hardware,
+                                                tiling = tiling[idx],
+                                                deeper_faults = deeper_faults,
+                                                )
+        elif isinstance(layer, nn.Linear):
+            new_layer = SystolicLinear( in_features = layer.in_features,
+                                        out_features = layer.out_features,
+                                        bias = layer.bias is not None,
+                                        hardware=hardware,
+                                        tiling = tiling[idx],
+                                        )
+        else:
+            raise Exception(f"The requested layer {name} is neither a Conv2d nor a Linear.")
+
+
+        # Copy the weights and biases from the original layer to the new layer
+        new_layer.load_weights(layer.weight.data.clone())
+        if layer.bias is not None:
+            new_layer.bias.data = layer.bias.data.clone()
+
+        # change the layer
+        setattr(parent, layer_name, new_layer)
+
+        # Update the layer name in the model
+        new_layer._get_name = new_layer._get_name
+
+        idx += 1  # Needed for tiling
+
+    return model
+
+####################### Layer definitions ################
+
+class SystolicLinear(nn.Linear):
+    def __init__(self, *args,
+                hardware: SystolicArray = None,
+                tiling = False,
+                **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._name = 'SystolicLinear'
+        if hardware is not None:
+            self.hw = hardware
+        else:
+            self.hw = SystolicArray(
+                100, 100, 150,
+                projection_matrices.output_stationary,
+                in_dtype=np.dtype(np.int16)
+            )
+
+        self.weight = None
+        self.injecting = 0
+
+        self.tiling = tiling
+
+    def load_weights(self, weight):
+        self.weight = torch.nn.Parameter(np.transpose(weight))
+
+    def forward(self, fmap):
+        batch_size = fmap.shape[0]
+
+        result = torch.zeros((batch_size, self.out_features))
+        part = self.hw.matmul(
+            fmap.numpy(), 
+            self.weight.numpy(), 
+            tiling=self.tiling 
+            )
+        result[:, :] = torch.Tensor(part) + self.bias
+        
+        return result
+
+
+class SystolicConv2d(nn.Conv2d):
+
+    def __init__(self, *args,
+                 hardware: SystolicArray = None,
+                 multiprocessing = False,
+                 tiling = False,
+                 deeper_faults = False,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         # Additional initialization if needed
 
         self.device = torch.device("cpu")
+        self.MULTIPROCESSING = multiprocessing
 
         assert self.groups <= 1, "Convolutions with more than 1 groups are not possible for now!"
 
-        self._name = 'SystolicConvolution'  # Custom name attribute
+        self._name = 'SystolicConv2d'  # Custom name attribute
         if hardware is not None:  # if hardware is explicit, then use that!
             assert use_gpu == hardware.use_gpu, "if hardware is using gpu, also this layer must!"
             self.hw = hardware
@@ -47,6 +160,14 @@ class SystolicConvolution(nn.Conv2d):
         #self.padding = padding
         self.weights = None
         self.injecting = 0
+        self.deeper_faults = deeper_faults
+
+        self.tiling = tiling
+
+        # padding argument
+        if (len(args) >=5 and args[4] == "valid") or (
+                kwargs.get("padding") == "valid" ):
+            self.padding = (0, 0)
 
         # Each element of the list should be a couple with the number of the channel and the fault:
         #   e.g. (-1, f) -> means that fault f will affect every channel
@@ -77,6 +198,7 @@ class SystolicConvolution(nn.Conv2d):
         # https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html#torch.nn.Conv2d
 
         self.weights = weights
+        self.weight = torch.nn.Parameter(weights)
 
     def _get_out_shape(self, H_in, W_in):
         output_h = np.floor(
@@ -92,12 +214,12 @@ class SystolicConvolution(nn.Conv2d):
         logging.info("Starting forward!")
         if self.use_gpu:
             res = _foward_cuda(batch)
-        else
+        else:
             res = _forward_with_cpu(batch)
         
         return res
 
-    def _forward_with_cpu(self, input)
+    def _forward_with_cpu(self, input):
         '''
         # Calculate padding based on kernel size
         kernel_size_height, kernel_size_width = self.kernel_size
@@ -109,16 +231,18 @@ class SystolicConvolution(nn.Conv2d):
             batch_size = input.shape[0]
             out_shape = self._get_out_shape(input.shape[2], input.shape[3])
 
-            print(f"out shape is {out_shape}")
+            # print(f"out shape is {out_shape}")
             input = torch.nn.functional.pad(input, [self.padding[0], self.padding[0], self.padding[1], self.padding[1]])
 
             result = torch.zeros((batch_size, self.out_channels, *out_shape))
 
-            print(f"[SystolicConvolution] starting batch-processing{'with injection!' if self.injecting >= 1 else ''}")
-            bar = tqdm(range(batch_size), position=0, leave=True)
+            # print(f"[SystolicConvolution] starting batch-processing{'with injection!' if self.injecting >= 1 else ''}")
+            bar = trange(0, batch_size, leave=False, dynamic_ncols=True,
+                         desc=f"[SystolicConv2d] batched {'injected' if self.injecting >= 1 else ''}", 
+            )
             it = iter(range(batch_size))
 
-            if MULTIPROCESSING:
+            if self.MULTIPROCESSING:
                 # Parallelization
                 with futures.ProcessPoolExecutor() as executor:
                     future_objects = {
@@ -134,9 +258,10 @@ class SystolicConvolution(nn.Conv2d):
                         result[index, :, :, :] = r
             else:
                 for batch_index in it:
-                    bar.update(1)
                     result[batch_index, :, :, :] = self._1grouping_conv(input[batch_index], out_shape)
+                    bar.update(1)
 
+            bar.close()
             del out_shape
             del batch_size
 
@@ -171,12 +296,14 @@ class SystolicConvolution(nn.Conv2d):
 
                 b = self.weights[c_out, c_in, :, :]
 
-                a = np.array(a)
-                b = np.array(b)
+                a = a.numpy()
+                b = b.numpy()
 
-                if self.channel_fault_list == [] or (
-                    self.channel_fault_list[0][0] != c_out and
-                    self.channel_fault_list[0][0] != -1
+                if not self.deeper_faults and (
+                    self.channel_fault_list == [] or (
+                        self.channel_fault_list[0][0] != c_out and
+                        self.channel_fault_list[0][0] != -1
+                    )
                 ):
                     lolif = lowerings.S_Im2Col(a.shape, b.shape)
                     low_a = lolif.lower_activation(a)
@@ -190,6 +317,7 @@ class SystolicConvolution(nn.Conv2d):
                         a, b,
                         lowering=lowerings.S_Im2Col,
                         array=self.hw,
+                        tiling=self.tiling,
                     )
 
                 result[c_out] += convolution
@@ -215,6 +343,10 @@ class SystolicConvolution(nn.Conv2d):
                 # ############## END DEBUGGING STUFF """
 
         return result
+
+
+
+######### Soon to be depracated #############################################################
 
 # ********************************************************************************************
 #            This function extracts the Conv2D layers of the network architecture
@@ -244,10 +376,14 @@ def replace_conv2d_layer(model, layer_num, hardware: SystolicArray = None):
 
     if isinstance(conv_layer, nn.Conv2d):
         # Replace the convolution layer with the custom MyConv2D class
-        new_conv_layer = SystolicConvolution(conv_layer.in_channels, conv_layer.out_channels,
-                                             conv_layer.kernel_size, conv_layer.stride,
-                                             conv_layer.padding, conv_layer.dilation,
-                                             conv_layer.groups, conv_layer.bias is not None,
+        new_conv_layer = SystolicConv2d(in_channels=conv_layer.in_channels,
+                                             out_channels=conv_layer.out_channels,
+                                             kernel_size=conv_layer.kernel_size, 
+                                             stride=conv_layer.stride,
+                                             padding=conv_layer.padding,
+                                             dilation=conv_layer.dilation,
+                                             groups=conv_layer.groups, 
+                                             bias=conv_layer.bias is not None,
                                              hardware=hardware)
 
         # Copy the weights and biases from the original layer to the new layer

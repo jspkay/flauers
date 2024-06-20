@@ -1,12 +1,13 @@
-import numpy as np
 from . import utils
 from . import lowerings
+from . import tilings
 from . import systolic_array
 from . import projection_matrices
 from . import fault_models
-from typing import overload
-import logging
 from . import exceptions
+
+import numpy as np
+import logging
 
 SystolicArray = systolic_array.SystolicArray
 ProjectionMatrices = projection_matrices
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 def convolve_with_array(A: np.ndarray, B: np.ndarray,
                         array: SystolicArray,
                         lowering: lowerings.LoLif = lowerings.S_Im2Col,
+                        tiling: bool = False,
                         ) -> np.ndarray:
     """
     Perform convolution between two matrices a and b using a systolic array, such that C = A * B
@@ -40,7 +42,7 @@ def convolve_with_array(A: np.ndarray, B: np.ndarray,
 
     low_A = transformed.lower_activation(A)
     low_B = transformed.lower_kernel(B)
-    result = array.matmul(low_A, low_B)
+    result = array.matmul(low_A, low_B, tiling = tiling)
 
     return transformed.lift(result)
 
@@ -52,6 +54,7 @@ def convolve(A: np.ndarray, B: np.ndarray,
              N2=-1,
              N3=-1,  # TODO: maybe projection_matrix can have its own class 🤷
              projection_matrix: np.ndarray = ProjectionMatrices.output_stationary,
+             tiling: bool = False,
              **kwargs
         ) -> np.ndarray:
     """
@@ -99,7 +102,7 @@ def convolve(A: np.ndarray, B: np.ndarray,
 
     low_A = transformed.lower_activation(A)
     low_B = transformed.lower_kernel(B)
-    result = hw.matmul(low_A, low_B)
+    result = hw.matmul(low_A, low_B, tiling=tiling)
 
     # return low_A @ low_B
     return transformed.lift(result)
@@ -110,15 +113,16 @@ def matmul(A, B,
            N2=-1,
            N3=-1,
            projection_matrix=ProjectionMatrices.output_stationary,
+           tiling: bool = False,
            **kwargs
            ) -> np.ndarray:
     if N1 == -1:
-        N1 = A.shape[0] + 1
+        N1 = A.shape[0]
     if N2 == -1:
-        N2 = B.shape[1] + 1
+        N2 = B.shape[1]
     if N3 == -1:
-        N3 = B.shape[0] + 1
+        N3 = B.shape[0]
 
     hw = SystolicArray(N1, N2, N3, projection_matrix, **kwargs)
-    return hw.matmul(A, B)
+    return hw.matmul(A, B, tiling=tiling)
 

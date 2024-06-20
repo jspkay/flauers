@@ -1,7 +1,8 @@
 import numpy as np
-from . import utils
 import logging
 from enum import Enum
+
+from . import utils
 
 # Indexes for the output of the lowerings
 lowered_indices = {
