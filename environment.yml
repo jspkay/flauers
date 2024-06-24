@@ -1,0 +1,11 @@
+name: flauers
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy
+  - bitarray
+  - numba
+  - pytorch
+  - torchvision
+  - tqdm

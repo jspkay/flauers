@@ -3,7 +3,6 @@ name = "systolic_injector_jspkay"
 version = "0.0.2"
 authors = [
     {name = "Salvatore Pappalard", email = "jspkay@gmail.com"},
-    {name = "Mahdi Taheri", email = "mahditahery@gmail.com"},
 ]
 description = "Systolic array simulator and injector withouth VHDL"
 readme = "README.md"
