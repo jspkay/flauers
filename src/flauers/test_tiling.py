@@ -23,12 +23,12 @@ class TestTiling(unittest.TestCase):
         N1 = 2
         N2 = 2
         N3 = 4
-        it = tilings.Tiling(A, B, N1, N2, N3)
-        for a, b, i, j in it:
-            print(a)
-            print(b)
-            print(a @ b)
-            print("----")    
+        it = tilings.Tiling(A.shape, B.shape, N1, N2, N3)
+        for i, j, k in it:
+            a = A[i:i+N1, k:k+N3]
+            b = B[k:k+N3, j:j+N2]
+            print( a @ b )
+            print("----")
             C[i:i+N1, j:j+N2] += a@b
         
         print("#####")
@@ -51,8 +51,15 @@ class TestTiling(unittest.TestCase):
 
             C = np.zeros((n1, n2))
             
-            it = tilings.Tiling(A, B, N1, N2, N3)
-            for a, b, i, j in it: 
+            it = tilings.Tiling(A.shape, B.shape, N1, N2, N3)
+            for i, j, k in it: 
+                a = A[i:i+N1, k:k+N3]
+                b = B[k:k+N3, j:j+N2]
                 C[i:i+N1, j:j+N2] += a@b
 
-            print( np.allclose(C, A@B) )
+            r = np.allclose(C, A@B, rtol=0.1)
+            print( r )
+            if not r:
+                print(C)
+                print(A@B)
+            self.assertTrue(r)

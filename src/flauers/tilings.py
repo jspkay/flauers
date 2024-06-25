@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+import numba.cuda as cuda
 
 from . import utils
 
@@ -18,7 +19,7 @@ class Tiling:
     TODO: description
     """
 
-    def __init__(self, A, B, N1, N2, N3):
+    def __init__(self, A_shape, B_shape, N1, N2, N3):
         """
         It is an iterator simulating the tiling of the inputs. The input matrices are A and B 
         such that it is not possible to perform A@B directly because of the constraints N1, N2, N3.
@@ -30,8 +31,8 @@ class Tiling:
 
         Parameters
         ---
-        A: matrix input A 
-        B: matrix input B 
+        A_shape: matrix input A shape
+        B_shape: matrix input B shape
         N1: Tile height
         N2: Tile width
         N3: Tile depth
@@ -39,8 +40,9 @@ class Tiling:
         
         # TODO: Add the checks for len(A.shape) == 2 and such
 
-        self.A = A
-        self.B = B
+        self.A_shape = A_shape
+        self.B_shape = B_shape
+
         self.N1 = N1
         self.N2 = N2
         self.N3 = N3
@@ -50,8 +52,8 @@ class Tiling:
         self.j = 0
     
     def __iter__(self):
-        ar, ac = self.A.shape
-        br, bc = self.B.shape
+        ar, ac = self.A_shape
+        br, bc = self.B_shape
 
         # How many columns ? (column limit)
         self.ilim = np.ceil( ar / self.N1 )
@@ -61,7 +63,6 @@ class Tiling:
 
         # how many iterations  per value ? (iteration limit)
         self.klim = np.ceil( ac / self.N3 )
-        # assert ac <= self.N3, "For now we, Tiling doesn't support N3. Please choose it carefully."
 
         return self
 
@@ -76,19 +77,17 @@ class Tiling:
                 self.i = 0
                 self.j += 1
 
-        istart = self.i * self.N1
-        istop = (self.i + 1) * self.N1
-
-        jstart = self.j * self.N2
-        jstop = (self.j+1) * self.N2
-
-        kstart = self.k * self.N3
-        kstop = (self.k+1) * self.N3
-
-        A = self.A[ istart:istop,  kstart:kstop ]
-        B = self.B[ kstart:kstop ,  jstart:jstop]
-        
         if self.j >= self.jlim:
             raise StopIteration
 
-        return A, B, istart, jstart
+        
+        istart = self.i * self.N1
+        jstart = self.j * self.N2
+        kstart = self.k * self.N3
+
+        istop = (self.i + 1) * self.N1
+        jstop = (self.j+1) * self.N2
+        kstop = (self.k+1) * self.N3
+
+
+        return istart, jstart, kstart

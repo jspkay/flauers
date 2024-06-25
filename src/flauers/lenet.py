@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.transforms import v2
 
 class LeNet(nn.Module):
     def __init__(self):

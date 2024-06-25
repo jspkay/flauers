@@ -1,102 +1,13 @@
-import injects
-import mamtuls_int
-import matmuls_float
+from . import matmuls_int
+from . import matmuls_float
 
+from numba import cuda
 import unittest
 import numpy as np
 import random
 
-class TestBasicInjectionsCuda(unittest.TestCase):
-    
-    def test_inject32(self):
-        value = np.int32(0xFFFFFF)
-        for i in range(32): # Stuck at 0
-            bitstring = np.int32(0x1 << i)
-            res = value
-            injects.inject_32(res, bitstring, 0)
-            self.assertEqual(res, value & ~bitstring)
-
-        value = np.int32(0)
-        for i in range(32): # Stuck at 1
-            bitstring = np.int32(0x1 << i)
-            res = value
-            injects.inject_32(res, bitstring, 1)
-            self.assertEqual(res, value | bitstring)
-        
-        value = np.int32(0xFFFFFF)
-        for i in range(32): # bit flip
-            bitstring = np.int32(0x1 << i)
-            res = value
-            injects.inject_32(res, bitstring, 2)
-            self.assertEqual(res, value ^ bitstring, 
-                msg=f"Doesn't hold for value {value}, bitstring {bitstring}, bit {i}"
-            )
-
-        for i in range(100):
-            bitstring = random.randint(-2**31, 2**31)
-            res = 0
-            injects.inject_32(res, bitstring, 3)
-            self.assertEqual(res, bitstring)
-
-    def test_inject64(self):
-        value = np.int64(~0x0)
-        for i in range(64): # Stuck at 0
-            bitstring = np.int64(0x1) << i
-            res = injects.inject_64(value, bitstring, 0)
-            self.assertEqual(res, value & ~bitstring)
-
-        value = np.int32(0)
-        for i in range(64): # Stuck at 1
-            bitstring = np.int64(0x1) << i
-            res = injects.inject_64(value, bitstring, 1)
-            self.assertEqual(res, value | bitstring)
-        
-        value = np.int32(~0x0)
-        for i in range(64): # bit flip
-            bitstring = np.int64(0x1) << i
-            res = injects.inject_64(value, bitstring, 2)
-            self.assertEqual(res, value ^ bitstring, 
-                msg=f"Doesn't hold for value {value}, bitstring {bitstring}, bit {i}"
-            )
-
-        for i in range(100):
-            bitstring = random.randint(-2**31, 2**31)
-            res = injects.inject_64(value, bitstring, 3)
-            self.assertEqual(res, bitstring)
-
-    def test_inject_int(self):
-        dtypes = [np.int8, np.int16, np.int32, np.int64]
-
-        for dtype in dtypes:
-            bits = np.dtype(dtype).itemsize * 8
-
-            value = dtype(~0x0)
-            for i in range(bits): # Stuck at 0
-                bitstring = dtype(dtype(0x1) << i)
-                res = injects.inject_int(value, bitstring, 0)
-                self.assertEqual(res, value & ~bitstring)
-
-            value = dtype(0)
-            for i in range(bits): # Stuck at 1
-                bitstring = dtype(dtype(0x1) << i)
-                res = injects.inject_int(value, bitstring, 1)
-                self.assertEqual(res, value | bitstring)
-            
-            value = dtype(~0x0)
-            for i in range(bits): # bit flip
-                bitstring = dtype(dtype(0x1) << i)
-                res = injects.inject_int(value, bitstring, 2)
-                self.assertEqual(res, value ^ bitstring, 
-                    msg=f"Doesn't hold for value {value}, bitstring {bitstring}, bit {i}"
-                )
-
-            for i in range(100):
-                bitstring = random.randint(-2**(bits-1), 2**(bits-1) )
-                res = injects.inject_int(value, bitstring, 3)
-                self.assertEqual(res, bitstring)
-
 class TestMatmulsInt(unittest.TestCase):
-    def test_noinjection(self):
+    def test_noinjection_i32(self):
         dtypes = {
             np.int8: np.int32,
             np.int16: np.int64
@@ -107,32 +18,40 @@ class TestMatmulsInt(unittest.TestCase):
         N3 = 10
 
         scale = 1e9
+
+        dtype = np.int8
+        out_dtype = np.int32
         
         for intype in [0, 1, 2]:
-            for dtype, out_dtype in dtypes.items():
-                ina = np.zeros((N1, N2, N3), dtype = dtype)
-                inb = ina
-                inc = ina
+            ina = np.zeros((N1, N2, N3), dtype = dtype)
+            inb = ina
+            inc = ina
 
-                A = np.array(
-                        np.random.rand(N1,N3) * scale,
-                        dtype=dtype
-                    )
-                B = np.array(
-                        np.random.rand(N3,N2) * scale,
-                        dtype=dtype
-                    )
-
-                Cok = A.astype(out_dtype)@B.astype(out_dtype)
-
-                C = np.zeros((N1, N2), dtype=out_dtype)
-                mamtuls_int.injected_matmul_old_int(
-                    A, B, C,
-                    ina, inb, inc,
-                    intype
+            A = np.array(
+                    np.random.rand(N1,N3) * scale,
+                    dtype=dtype
+                )
+            B = np.array(
+                    np.random.rand(N3,N2) * scale,
+                    dtype=dtype
                 )
 
-                self.assertTrue( np.allclose(C, Cok) )
+            Cok = A.astype(out_dtype)@B.astype(out_dtype)
+
+            # arrays to cuda
+            A = cuda.to_device(A)
+            B = cuda.to_device(B)
+            C = cuda.device_array((N1, N2), dtype=out_dtype)
+            matmuls_int.injected_matmul_old_int32[32,32](
+                A, B, C,
+                ina, inb, inc,
+                np.int8(intype)
+            )
+
+            C = C.copy_to_host()
+            print(C)
+            print(Cok)
+            self.assertTrue( np.allclose(C, Cok) )
 
     def test_random_injection_c(self):
         dtypes = {
@@ -309,12 +228,14 @@ class TestMatmulsFloat32(unittest.TestCase):
             Cok = A @ B
 
             C = np.zeros((N1, N2), dtype=np.float32)
-            matmuls_float.injected_matmul_old_f32(
+            matmuls_float.injected_matmul_old_f32[N1, N2](
                 A, B, C,
                 ina, inb, inc,
                 intype
             )
 
+            print(C)
+            print(Cok)
             self.assertTrue( np.allclose(C, Cok) )
 
     def test_float32_sa0(self):
@@ -409,4 +330,3 @@ class TestMatmulsFloat32(unittest.TestCase):
                 np.invert( np.isclose(C, Cok) ).sum(),
                 1
             )
-

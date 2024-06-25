@@ -1,3 +1,6 @@
+from . import matmuls_int, matmuls_float
+from . import utils
+
 import numpy as np
 import numba
 from numba import cuda
