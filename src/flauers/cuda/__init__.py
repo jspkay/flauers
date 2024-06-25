@@ -1,5 +1,7 @@
-from . import matmuls_int, matmuls_float
-from . import utils
+from numba import cuda
+if cuda.is_available():
+    from . import matmuls_int, matmuls_float
+    from . import utils
 
 import numpy as np
 import numba

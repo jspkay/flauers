@@ -7,7 +7,6 @@ from torchvision.transforms import v2
 import unittest
 import torchvision as tv
 import numpy as np
-
 import sys
 setattr(sys.modules["__main__"], "LeNet", lenet.LeNet)
 
