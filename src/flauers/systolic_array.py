@@ -6,13 +6,15 @@ import logging
 import bitarray
 from collections import defaultdict
 
-from . import cuda
 from .utils import LineType
 from .fault_models import *  # Contains the class Fault
 from .exceptions import *
 from .tilings import Tiling
 from . import utils
 from . import cpu
+
+if numba.cuda.is_available():
+    from . import cuda
 
 class SystolicArray:
 
