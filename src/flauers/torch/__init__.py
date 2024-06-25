@@ -26,9 +26,9 @@ def compatible_layers(model: torch.nn.Module):
     return res
 
 def replace_layers(model: torch.nn.Module, 
-                    names: str|list[bool], 
+                    names, # : str|list[bool], 
                     hardware: SystolicArray,
-                    tiling: bool|list[bool] = False,
+                    tiling = False, # : bool|list[bool] = False,
                     deeper_faults = False ):
 
     if isinstance(names, str):
@@ -119,9 +119,9 @@ class SystolicLinear(nn.Linear):
 
         result = torch.zeros((batch_size, self.out_features))
         part = self.hw.matmul(
-            fmap.numpy(), 
-            self.weight.numpy(), 
-            tiling=self.tiling 
+            fmap.numpy(),
+            self.weight.numpy(),
+            tiling=self.tiling
             )
         result[:, :] = torch.Tensor(part) + self.bias
         

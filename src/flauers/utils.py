@@ -81,9 +81,10 @@ def inverse_space_time_equation(eps: np.ndarray, t: np.ndarray):
 
 
 def is_comprised(
-        nu: list[int, int, int],
-        nu_start: list[int, int, int],
-        nu_stop: list[int, int, int]) -> bool:
+        nu: list, #[int, int, int],
+        nu_start: list, #[int, int, int],
+        nu_stop: list, #[int, int, int]
+        ) -> bool:
     """
     Checks whether nu is comprised between nu_start and nu_stop, i.e. for each component i the following
     relationship holds:

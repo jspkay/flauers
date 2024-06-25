@@ -148,58 +148,47 @@ class SystolicArray:
         # We only can do multiplication of 2D matrices!
         assert len(A.shape) == 2 and len(B.shape) == 2, "matmul only accepts 2D matrices!!!"
 
-        ### Actual comptation 
-        matmul = None
-        if self.use_gpu and self.use_legacy:
-            matmul = self.matmul_legacu_cuda
-        elif self.use_gpu and not self.use_legacy:
-            raise NotImplementedError("This feature has not yet been implemented. You can't have use_legacy=False")
-        elif not self.use_gpu and self.use_legacy:
-            matmul = self.matmul_legacy_cpu
-        else:  # not self.use_gpu and not self.use_legacy:
+        ### Actual comptation
+        res = None
+        if self.use_gpu:
+            res = self._matmul_cuda(A, B, tiling)
+        else: # use cpu  
+            res = self._matmul_cpu(A, B, tiling)
+
+        return res
+
+    #############################################
+    #                                           #
+    #              MATMUL CPU                   #
+    #                                           #
+    #############################################
+
+    def _matmul_cpu(self, A, B, tiling):
+        res = None
+        if tiling is False and self.use_legacy:
+            self._check_matmul_shape(A, B)
+            res = self.matmul_legacy_cpu(A, B)
+        elif tiling and self.use_legacy:
+            res = self.matmul_legacy_cpu_tiled(A, B)
+        elif self.use_legacy is False:
             raise NotImplementedError("This feature has not yet been implemented. You can't have use_legacy=False")
             matmul = self._matmul_new
-
-        ar, ac = A.shape
-        br, bc = B.shape
-        res = np.zeros((ar, bc), dtype=self.mac_dtype)
-        if tiling is False:
-            res = matmul(A, B)
-        else:
-            for a, b, i, j in Tiling(A, B, self.N1, self.N2, self.N3):
-                res[ i:i+self.N1, j:j+self.N2 ] += matmul(a, b)
 
         return res
         
     def matmul_legacy_cpu_tiled(self, A, B):
-        res = np.zeros((ar, bc), dtype=self.mac_dtype)
-        for a, b, i, j in Tiling(A, B, self.N1, self.N2, self.N3):
-                res[ i:i+self.N1, j:j+self.N2 ] += self.matmul_legacy_cpu(a, b)
+        res = np.zeros((A.shape[0], B.shape[1]), dtype=self.mac_dtype)
+        N1 = self.N1
+        N2 = self.N2
+        N3 = self.N3
+        for i, j, k in Tiling(A.shape, B.shape, N1, N2, N3):
+                res[ i:i+N1, j:jN2 ] += self.matmul_legacy_cpu(
+                    A[i:i+N1, k:k+N3],
+                    B[k:k+N3, j:j+N2]
+                )
         return res
 
     def matmul_legacy_cpu(self, A, B):
-        assert self.adder == np.add and self.multiplier == np.multiply and (
-            self.mm == np.matmul), "It is not possible to use the optimized versions with approximate logic yet!"
-
-        ar, ac = A.shape
-        br, bc = B.shape
-
-        if ac != br:
-            raise Exception("matrix not compatible!")
-
-        N1 = ar
-        N2 = bc
-        N3 = br  # same as ac
-
-        if self.N1 < N1:
-            raise DimensionError(f"N1 ({self.N1}) is too small for this matrix multiplication ({N1})")
-        if self.N2 < N2:
-            raise DimensionError(f"N2 ({self.N2}) is too small for this matrix multiplication ({N2})")
-        if self.N3 < N3:
-            raise DimensionError(f"N3 ({self.N3}) is too small for this matrix multiplication ({N3})")
-
-        logging.info(f"[SystolicArray] requirements OK!")
-
         C = np.zeros((N1, N2), dtype=self.mac_dtype)
 
         if self.in_dtype.name == "float32":
@@ -235,12 +224,54 @@ class SystolicArray:
         print(C.shape)
         C.tofile("C.h5") """
 
-        # assert np.allclose(C, (A@B), atol=1e-6, rtol=1e-5)
-
         return C
 
+    #############################################
+    #                                           #
+    #             MATMUL CUDA                   #
+    #                                           #
+    #############################################
+
+    def _matmul_cuda(self, A, B, tiling):
+        res = None
+        if tiling is False and self.use_legacy:
+            self._check_matmul_shape(A, B)
+            res = self.matmul_legacy_cuda(A, B)
+        elif tiling and self.use_legacy:
+            res = self.matmul_legacy_cuda_tiled(A, B)
+        else:
+            raise NotImplementedError("This feature has not yet been implemented. You can't have use_legacy=False")
+        return res
+
     def matmul_legacy_cuda(self, A, B):
-        pass
+        # A, B are assumed to be on GPU already!
+        if self.in_dtype == np.int8 and self.mac_dtype == np.int32:
+            C = numba.cuda.device_array((A.shape[0], B.shape[1]), np.int32)
+            cuda.utils.zero_init_matrix[32,8](C) # initialize to zero
+            cuda.matmuls_int.injected_matmul_old_int32[32, 8](
+                A, B, C,
+                self.injection_a, self.injection_b, self.injection_c,
+                self.injection_a_type
+            )
+        else:
+            raise NotImplementedError("You can only use in_dtype=np.int8 and mac_dtype=np.int32")
+        return C
+
+    def matmul_legacy_cuda_tiled(self, A, B):
+        if self.in_dtype == np.int8 and self.mac_type == np.int32:
+            C = numba.cuda.device_array((A.shape[0], B.shape[1]), np.int32)
+            cuda.utils.zero_init_matrix[32, 8](C)
+            for i, j, k in Tiling(A.shape, B.shape, self.N1, self.N2, self.N3):
+                cuda.matmuls_int.injected_matmul_old_int32[32, 8](
+                    A[i:i+self.N1, k:k+self.N3], 
+                    B[k:k+self.N3, j:j+self.N2], 
+                    C[i:i+self.N1, j:j+self.N2],
+                    self.injection_a, self.injection_b, self.injection_c,
+                    self.injection_a_type
+                )
+        else:
+            raise NotImplementedError("You can only use in_dtype=np.int8 and mac_dtype=np.int32")
+        return C
 
     def _matmul_new(self, A: np.ndarray, B: np.ndarray):
         assert self.adder == np.add and self.multiplier == np.multiply, "It is not possible to have use_legacy=False and approximate adders and multipliers.\
@@ -261,6 +292,29 @@ class SystolicArray:
             c_g = self.mm(a_bar, b_bar)  # a_bar @ b_bar
             C_f[i, j] = c_g - self._fault_function(a_bar, b_bar, fault)
         return C + C_f
+
+    def _check_matmul_shape(self, A, B):
+        assert self.adder == np.add and self.multiplier == np.multiply and (
+            self.mm == np.matmul), "It is not possible to use the optimized versions with approximate logic yet!"
+
+        ar, ac = A.shape
+        br, bc = B.shape
+
+        if ac != br:
+            raise Exception("matrix not compatible!")
+
+        N1 = ar
+        N2 = bc
+        N3 = br  # same as ac
+
+        if self.N1 < N1:
+            raise DimensionError(f"N1 ({self.N1}) is too small for this matrix multiplication ({N1})")
+        if self.N2 < N2:
+            raise DimensionError(f"N2 ({self.N2}) is too small for this matrix multiplication ({N2})")
+        if self.N3 < N3:
+            raise DimensionError(f"N3 ({self.N3}) is too small for this matrix multiplication ({N3})")
+
+        logging.info(f"[SystolicArray] requirements OK!")
 
 ############ Fault related functions ########################################################
     def get_fault_list(self):

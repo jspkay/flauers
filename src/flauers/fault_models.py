@@ -6,7 +6,7 @@ from .utils import LineType
 
 class Fault:
 
-    def _parse_time(self, time_string) -> tuple[int, int]:
+    def _parse_time(self, time_string) -> tuple: #[int, int]:
         result = [0, 0]
 
         if time_string == "inf":
