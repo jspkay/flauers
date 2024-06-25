@@ -1,10 +1,16 @@
-from .lenet import *
+from . import lenet
 import flauers
 import flauers.torch
 
-
+import torch
 import unittest
 import torchvision as tv
+from torchvision.transforms import v2
+import numpy as np
+
+
+import sys
+setattr(sys.modules["__main__"], "LeNet", lenet.LeNet)
 
 class TestTorch(unittest.TestCase):
 
@@ -32,7 +38,7 @@ class TestTorch(unittest.TestCase):
                     break
                 i+=1
             golden_acc = correct / tot
-        print("model accuracy is ", acc.item()*100)
+        print("model accuracy is ", golden_acc.item()*100)
 
         hw = flauers.SystolicArray(
             30, 30, 300, 
