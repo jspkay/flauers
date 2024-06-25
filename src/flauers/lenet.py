@@ -13,8 +13,7 @@ class LeNet(nn.Module):
         self.fc3 = nn.Linear(84, 10)
 
     def forward(self, x):
-        x.to("cpu")
-        x = self.conv1(x).to("cpu")
+        x = self.conv1(x)
         
         x = self.pool(F.relu(x))
         x = self.pool(F.relu(self.conv2(x)))
