@@ -12,7 +12,7 @@ import logging
 SystolicArray = systolic_array.SystolicArray
 ProjectionMatrices = projection_matrices
 
-__version__ = "0.0.1"
+__version__ = "0.9.9"
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +40,18 @@ def convolve_with_array(A: np.ndarray, B: np.ndarray,
 
     transformed = lowering(A.shape, B.shape)
 
-    low_A = transformed.lower_activation(A)
-    low_B = transformed.lower_kernel(B)
-    result = array.matmul(low_A, low_B, tiling = tiling)
+    if use_gpu:
+        low_A = transformed.lower_activation_cuda(A)
+        low_B = transformed.lower_kernel_cuda(B)
+        lowered_result = array.matmul_cuda(low_A, low_B, tiling = tiling)
+        result = transformed.lift_cuda(lowered_result)
+    else:
+        low_A = transformed.lower_activation(A)
+        low_B = transformed.lower_kernel(B)
+        lowered_result = array.matmul(low_A, low_B, tiling = tiling)
+        result = transformed.lift(lowered_result)
 
-    return transformed.lift(result)
+    return result
 
 
 def convolve(A: np.ndarray, B: np.ndarray,
@@ -114,6 +121,7 @@ def matmul(A, B,
            N3=-1,
            projection_matrix=ProjectionMatrices.output_stationary,
            tiling: bool = False,
+           use_gpu: bool = False,
            **kwargs
            ) -> np.ndarray:
     if N1 == -1:
@@ -123,6 +131,6 @@ def matmul(A, B,
     if N3 == -1:
         N3 = B.shape[0]
 
-    hw = SystolicArray(N1, N2, N3, projection_matrix, **kwargs)
+    hw = SystolicArray(N1, N2, N3, projection_matrix, use_gpu, **kwargs)
     return hw.matmul(A, B, tiling=tiling)
 

@@ -15,6 +15,7 @@ from . import cpu
 
 if numba.cuda.is_available():
     from . import cuda
+    from numba.cuda.cudadrv.devicearray import DeviceNDArray
 
 class SystolicArray:
 
@@ -27,6 +28,8 @@ class SystolicArray:
                  use_legacy = True,
                  approximate_matmul = None,
                  approximate_multiplier = None, approximate_adder = None,
+                 gpu_griddim = 64,
+                 gpu_blockdim = 128,
                  ):
         """
         Initialize an object that performs the actual systolic multiplication C = A*B using the systolic equations
@@ -44,8 +47,14 @@ class SystolicArray:
         """
 
         logging.info(f"[SystolicArray] instantiating a new systolic array...")
+        
+        # Method choice (performance related)
+        self.use_legacy = use_legacy
+        self.use_gpu = use_gpu
+        self.gpu_griddim = gpu_griddim
+        self.gpu_blockdim = gpu_blockdim
 
-        # Physical parameters
+        # Systolic Array Physical parameters
         self.N1 = n1
         self.N2 = n2
         self.N3 = n3
@@ -75,9 +84,12 @@ class SystolicArray:
         self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
         self.injection_c = np.zeros((self.N1, self.N2, self.N3),
                     dtype=f"int{nbits}" if self.in_dtype.kind=="f" else f"int{nbits*4}")
-        self.injection_a_type = 0
+        self.injection_a_type = np.int8(0)
         # self.injection_b_type = None
         # self.injection_c_type = None
+
+        if self.use_gpu:
+            self._update_parameters_cuda()
 
         # It is not possible to get all the iterative positions mathematically using P^-1, so we use this function
         # to map the iteartion space to the physical space and we will have a list of iterative points (i, j, k)
@@ -94,9 +106,19 @@ class SystolicArray:
         self.adder      = np.add if approximate_adder is None else approximate_adder
         self.mm     = np.matmul if approximate_matmul is None else approximate_matmul
 
-        # Method choice (performance related)
-        self.use_legacy = use_legacy
-        self.use_gpu = use_gpu
+        # Cuda matmul kernel choice (performance related)
+        if use_gpu:
+            if use_legacy:
+                if self.in_dtype == np.int8 and self.mac_dtype == np.int32:
+                    self.cuda_matmul_kernel = cuda.matmuls_int.injected_matmul_old_int8
+                elif self.in_dtype == np.float32 and self.mac_dtype == np.float32:
+                    self.cuda_matmul_kernel = cuda.matmuls_float.injected_matmul_old_float32
+                elif self.in_dtype == np.float64 and self.mac_dtype == np.float64:
+                    self.cuda_matmul_kernel = cuda.matmuls_float.injected_matmul_old_float64
+                else:
+                    raise NotImplementedError(f"matmul cuda with in_dtype={self.in_dtype} and mac_dtype={self.mac_dtype} is not implemented yet.")
+            else:
+                raise NotImplementedError("Didn't implement this yet... Can't have use_legacy = False")
 
 
 ######### CORE #######################################
@@ -120,11 +142,37 @@ class SystolicArray:
 
         # ##################### Safe Casting and data structures instantiations
         # Safe casting to avoid overflow
-        if not isinstance(A, np.ndarray):
+        if not isinstance(A, np.ndarray) and not hasattr(A, "__cuda_array_interface__"):
             logging.warning(f"[SystolicArray] Matrix A is not instance of numpy.ndarray. This may cause problems")
-        if not isinstance(B, np.ndarray):
+        if not isinstance(B, np.ndarray) and not hasattr(B, "__cuda_array_interface__"):
             logging.warning(f"[SystolicArray] Matrix B is not instance of numpy.ndarray. This may cause problems")
 
+        if A.dtype != self.in_dtype or B.dtype != self.in_dtype:
+            logging.warning(f"[SystolicArray] The dtype of the input does not match the dtype specified in the costructor!")
+            if self.use_gpu:
+                raise WrongDtypeError
+            logging.warning(f"[SystolicArray] Using the cpu will result in an implicit cast.")
+
+        logging.info(f"[SystolicArray] checking all the requirements")
+        # We only can do multiplication of 2D matrices!
+        assert len(A.shape) == 2 and len(B.shape) == 2, "matmul only accepts 2D matrices!!!"
+
+        ### Actual comptation
+        res = None
+        if self.use_gpu:
+            res = self.matmul_cuda(A, B, tiling)
+        else: # use cpu  
+            res = self.matmul_cpu(A, B, tiling)
+
+        return res
+
+    #############################################
+    #                                           #
+    #              MATMUL CPU                   #
+    #                                           #
+    #############################################
+
+    def matmul_cpu(self, A, B, tiling):
         # A = A.astype(self.dtype, casting="safe")
         # Would be nice to use the astype method,
         # but it doesn't check dynamically whether the values fit in the new type
@@ -146,26 +194,6 @@ class SystolicArray:
         del A_np
         del B_np
 
-        logging.info(f"[SystolicArray] checking all the requirements")
-        # We only can do multiplication of 2D matrices!
-        assert len(A.shape) == 2 and len(B.shape) == 2, "matmul only accepts 2D matrices!!!"
-
-        ### Actual comptation
-        res = None
-        if self.use_gpu:
-            res = self._matmul_cuda(A, B, tiling)
-        else: # use cpu  
-            res = self._matmul_cpu(A, B, tiling)
-
-        return res
-
-    #############################################
-    #                                           #
-    #              MATMUL CPU                   #
-    #                                           #
-    #############################################
-
-    def _matmul_cpu(self, A, B, tiling):
         res = None
         if tiling is False and self.use_legacy:
             self._check_matmul_shape(A, B)
@@ -184,14 +212,14 @@ class SystolicArray:
         N2 = self.N2
         N3 = self.N3
         for i, j, k in Tiling(A.shape, B.shape, N1, N2, N3):
-                res[ i:i+N1, j:jN2 ] += self.matmul_legacy_cpu(
+                res[i:i+N1, j:j+N2] += self.matmul_legacy_cpu(
                     A[i:i+N1, k:k+N3],
                     B[k:k+N3, j:j+N2]
                 )
         return res
 
     def matmul_legacy_cpu(self, A, B):
-        C = np.zeros((N1, N2), dtype=self.mac_dtype)
+        C = np.zeros((A.shape[0], B.shape[1]), dtype=self.mac_dtype)
 
         if self.in_dtype.name == "float32":
             cpu.injected_matmul_old_f32(
@@ -233,47 +261,51 @@ class SystolicArray:
     #             MATMUL CUDA                   #
     #                                           #
     #############################################
+    """
+    A key problem for cuda is that instantiation is better done "as high as possible" in the call stack. This is because we would rather allocate the whole tensor
+    at the beginning rather than allocating multiple and then transferring the data from one tensor to another. 
+    To solve this issue, matmul_cuda is the only one that allocate the tensor, the other functions take the output tensor as the FIRST parameter.
+    """
 
-    def _matmul_cuda(self, A, B, tiling):
-        res = None
+    def matmul_cuda(self, A, B, tiling: bool = False):
+        res = numba.cuda.device_array((A.shape[0], B.shape[1]), dtype=self.mac_dtype)
         if tiling is False and self.use_legacy:
             self._check_matmul_shape(A, B)
-            res = self.matmul_legacy_cuda(A, B)
+            self.matmul_legacy_cuda(res, A, B)
         elif tiling and self.use_legacy:
-            res = self.matmul_legacy_cuda_tiled(A, B)
+            self.matmul_legacy_cuda_tiled(res, A, B)
         else:
             raise NotImplementedError("This feature has not yet been implemented. You can't have use_legacy=False")
         return res
 
-    def matmul_legacy_cuda(self, A, B):
+    def matmul_legacy_cuda(self, C, A, B):
         # A, B are assumed to be on GPU already!
-        if self.in_dtype == np.int8 and self.mac_dtype == np.int32:
-            C = numba.cuda.device_array((A.shape[0], B.shape[1]), np.int32)
-            cuda.utils.zero_init_matrix[32,8](C) # initialize to zero
-            cuda.matmuls_int.injected_matmul_old_int32[32, 8](
-                A, B, C,
-                self.injection_a, self.injection_b, self.injection_c,
-                self.injection_a_type
-            )
-        else:
-            raise NotImplementedError("You can only use in_dtype=np.int8 and mac_dtype=np.int32")
+        self.cuda_matmul_kernel[self.gpu_griddim,self.gpu_blockdim](
+            A, B, C,
+            self.injection_a, self.injection_b, self.injection_c,
+            self.injection_a_type,
+            False  # additive argument
+        )
         return C
 
-    def matmul_legacy_cuda_tiled(self, A, B):
-        if self.in_dtype == np.int8 and self.mac_type == np.int32:
-            C = numba.cuda.device_array((A.shape[0], B.shape[1]), np.int32)
-            cuda.utils.zero_init_matrix[32, 8](C)
-            for i, j, k in Tiling(A.shape, B.shape, self.N1, self.N2, self.N3):
-                cuda.matmuls_int.injected_matmul_old_int32[32, 8](
-                    A[i:i+self.N1, k:k+self.N3], 
-                    B[k:k+self.N3, j:j+self.N2], 
-                    C[i:i+self.N1, j:j+self.N2],
-                    self.injection_a, self.injection_b, self.injection_c,
-                    self.injection_a_type
-                )
-        else:
-            raise NotImplementedError("You can only use in_dtype=np.int8 and mac_dtype=np.int32")
+    def matmul_legacy_cuda_tiled(self, C, A, B):
+        cuda.utils.zero_init_matrix[self.gpu_griddim,self.gpu_blockdim](C)
+        for i, j, k in Tiling(A.shape, B.shape, self.N1, self.N2, self.N3):
+            self.cuda_matmul_kernel[self.gpu_griddim,self.gpu_blockdim](
+                A[i:i+self.N1, k:k+self.N3],
+                B[k:k+self.N3, j:j+self.N2],
+                C[i:i+self.N1, j:j+self.N2],
+                self.injection_a, self.injection_b, self.injection_c,
+                self.injection_a_type,
+                True  # additive argument
+            )
         return C
+
+    def _update_parameters_cuda(self):
+        self.injection_a      = numba.cuda.to_device(self.injection_a)
+        self.injection_b      = numba.cuda.to_device(self.injection_b)
+        self.injection_c      = numba.cuda.to_device(self.injection_c)
+        # self.injection_a_type = numba.cuda.to_device(self.injection_a_type)
 
     def _matmul_new(self, A: np.ndarray, B: np.ndarray):
         assert self.adder == np.add and self.multiplier == np.multiply, "It is not possible to have use_legacy=False and approximate adders and multipliers.\
@@ -349,7 +381,10 @@ class SystolicArray:
         self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
         self.injection_c = np.zeros((self.N1, self.N2, self.N3),
                     dtype=f"int{nbits}" if self.in_dtype.kind=="f" else f"int{nbits*4}")
-        self.injection_a_type = 0
+        self.injection_a_type = np.int8(0)
+        
+        if self.use_gpu:
+            self._update_parameters_cuda()
 
     def clear_single_fault(self, id):
         if self.use_legacy and self.optimized:

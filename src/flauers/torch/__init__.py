@@ -3,6 +3,7 @@ from .. import SystolicArray
 from .. import projection_matrices
 from .. import fault_models
 from .. import lowerings
+from ..lowerings import LoLifType
 
 from ..__init__ import *
 
@@ -13,6 +14,9 @@ import torch.nn as nn
 import numpy as np
 from tqdm.autonotebook import tqdm, trange
 import concurrent.futures as futures
+import numba
+import numba.cuda as cuda
+from numba_progress import ProgressBar
 
 ############### Helper functions ####################
 
@@ -28,13 +32,19 @@ def compatible_layers(model: torch.nn.Module):
 def replace_layers(model: torch.nn.Module, 
                     names, # : str|list[bool], 
                     hardware: SystolicArray,
+                    device: None|str|torch.device = None, 
                     tiling = False, # : bool|list[bool] = False,
-                    deeper_faults = False ):
+                    deeper_faults = False,
+                    gpu_griddim = 64,
+                    gpu_blockdim = 128,
+                    ):
 
     if isinstance(names, str):
         names = [names]
     if isinstance(tiling, bool):
         tiling = [tiling] * len(names)
+    if device is None:
+        device = "cuda" if hardware.use_gpu else "cpu"
 
     assert len(tiling) == len(names), "Please, give a list in Tiling with the same size of names!"
 
@@ -57,6 +67,12 @@ def replace_layers(model: torch.nn.Module,
                                                 dilation = conv_layer.dilation,
                                                 groups = conv_layer.groups,
                                                 bias = conv_layer.bias is not None,
+                                                padding_mode = conv_layer.padding_mode,
+
+                                                device = device,
+                                                gpu_griddim = gpu_griddim,
+                                                gpu_blockdim = gpu_blockdim,
+
                                                 hardware = hardware,
                                                 tiling = tiling[idx],
                                                 deeper_faults = deeper_faults,
@@ -65,6 +81,11 @@ def replace_layers(model: torch.nn.Module,
             new_layer = SystolicLinear( in_features = layer.in_features,
                                         out_features = layer.out_features,
                                         bias = layer.bias is not None,
+
+                                        device = device,
+                                        gpu_griddim = gpu_griddim,
+                                        gpu_blockdim = gpu_blockdim,
+
                                         hardware=hardware,
                                         tiling = tiling[idx],
                                         )
@@ -93,8 +114,18 @@ class SystolicLinear(nn.Linear):
     def __init__(self, *args,
                 hardware: SystolicArray = None,
                 tiling = False,
+                gpu_griddim = 64,
+                gpu_blockdim = 128,
                 **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.weight = None
+        self.injecting = 0
+
+        self.tiling = tiling
+
+        device = kwargs.get("device")
+        self.use_gpu = device == "cuda" or device == torch.device("cuda")
 
         self._name = 'SystolicLinear'
         if hardware is not None:
@@ -103,28 +134,48 @@ class SystolicLinear(nn.Linear):
             self.hw = SystolicArray(
                 100, 100, 150,
                 projection_matrices.output_stationary,
-                in_dtype=np.dtype(np.int16)
+                in_dtype=np.dtype(np.float32),
+                use_gpu=self.use_gpu,
+                gpu_blockdim = gpu_blockdim,
+                gpu_griddim = gpu_griddim
             )
 
-        self.weight = None
-        self.injecting = 0
-
-        self.tiling = tiling
-
     def load_weights(self, weight):
-        self.weight = torch.nn.Parameter(np.transpose(weight))
+        self.weight = torch.nn.Parameter(weight.transpose(0, 1))
 
     def forward(self, fmap):
         batch_size = fmap.shape[0]
 
-        result = torch.zeros((batch_size, self.out_features))
-        part = self.hw.matmul(
-            fmap.numpy(),
-            self.weight.numpy(),
-            tiling=self.tiling
-            )
-        result[:, :] = torch.Tensor(part) + self.bias
-        
+        if self.use_gpu:
+            result = torch.zeros((batch_size, self.out_features), device="cuda") + self.bias
+            result = cuda.as_cuda_array(result)
+            if self.tiling:
+                part = self.hw.matmul_legacy_cuda_tiled(
+                            result,
+                            cuda.as_cuda_array(fmap.detach()),
+                            cuda.as_cuda_array(self.weight.detach()),
+                        )
+            else:
+                part = self.hw.matmul_legacy_cuda(
+                            result,
+                            cuda.as_cuda_array(fmap.detach()),
+                            cuda.as_cuda_array(self.weight.detach()),
+                        )
+            result = torch.as_tensor(result, device="cuda")
+        else:
+            result = torch.zeros((batch_size, self.out_features), device = "cpu")
+            if self.tiling:
+                part = self.hw.matmul_legacy_cpu_tiled(
+                            fmap.numpy(),
+                            self.weight.numpy(),
+                        )
+            else:
+                part = self.hw.matmul_legacy_cpu(
+                    fmap.numpy(),
+                    self.weight.numpy(),
+                    )
+            result[:, :] = torch.as_tensor(part, device="cpu") + self.bias
+            
         return result
 
 
@@ -135,47 +186,60 @@ class SystolicConv2d(nn.Conv2d):
                  multiprocessing = False,
                  tiling = False,
                  deeper_faults = False,
-                 **kwargs):
-        super().__init__(*args, **kwargs)
+                 lowering: lowerings.LoLif = lowerings.S_Im2Col,
+                 gpu_blockdim = 64,
+                 gpu_griddim = 128,
+                 **kwargs
+                 ):
         # Additional initialization if needed
+        super().__init__(*args, **kwargs)
+        
+        ###### Torch related
+        self._name = 'SystolicConv2d'  # Custom name attribute
 
-        self.device = torch.device("cpu")
-        self.MULTIPROCESSING = multiprocessing
+        # ### padding argument
+        if (len(args) >=5 and args[4] == "valid") or (
+                kwargs.get("padding") == "valid" ):
+            self.padding = (0, 0)
 
         assert self.groups <= 1, "Convolutions with more than 1 groups are not possible for now!"
 
-        self._name = 'SystolicConv2d'  # Custom name attribute
+        self.weights = None
+
+        # ### Simulation optimization
+        device = kwargs.get("device")
+        self.use_gpu = device == "cuda" or device == torch.device("cuda")
+        self.gpu_blockdim = gpu_blockdim
+        self.gpu_griddim = gpu_griddim
+
+        ########## Hardware simulation related
         if hardware is not None:  # if hardware is explicit, then use that!
-            assert use_gpu == hardware.use_gpu, "if hardware is using gpu, also this layer must!"
             self.hw = hardware
         else:  # otherwise, automatically instantiate a new object with good dimensions
             self.hw = SystolicArray(
                 100, 100, 150,
                 projection_matrices.output_stationary,
-                in_dtype=np.dtype(np.int16),
-                use_gpu = use_gpu,
+                in_dtype=np.dtype(np.float32),
+                use_gpu = self.use_gpu,
+                gpu_blockdim = gpu_blockdim,
+                gpu_griddim = gpu_griddim
             )
-            # fault = si.fault_models.StuckAt("a", x=1, y=1, bit=1, polarity=1, msb="last")
-        # Set the padding attribute based on the input padding argument
-        #self.padding = padding
-        self.weights = None
-        self.injecting = 0
-        self.deeper_faults = deeper_faults
 
         self.tiling = tiling
 
-        # padding argument
-        if (len(args) >=5 and args[4] == "valid") or (
-                kwargs.get("padding") == "valid" ):
-            self.padding = (0, 0)
+        self.lowering = lowering
+        self.input_shape = None
 
-        # Each element of the list should be a couple with the number of the channel and the fault:
-        #   e.g. (-1, f) -> means that fault f will affect every channel
-        #        (1, f) -> means that fault f will affect only channel 1
+        # ### faults
+        self.injecting = 0
+        self.deeper_faults = deeper_faults
+            # Each element of the list should be a couple with the number of the channel and the fault:
+            #   e.g. (-1, f) -> means that fault f will affect every channel
+            #        (1, f) -> means that fault f will affect only channel 1
         self.channel_fault_list = []
 
-        # Do we use the gpu?
-        self.use_gpu = use_gpu
+        ### Deprecated
+        self.MULTIPROCESSING = False
 
     def add_fault(self, fault: fault_models.Fault, channel=-1):
         self.injecting += 1
@@ -203,21 +267,118 @@ class SystolicConv2d(nn.Conv2d):
     def _get_out_shape(self, H_in, W_in):
         output_h = np.floor(
             (H_in + 2 * self.padding[0] - self.dilation[0] * (self.kernel_size[0] - 1) - 1) /
-            self.stride[0] + 1)
+            self.stride[0] + 1
+        )
         output_w = np.floor(
             (W_in + 2 * self.padding[1] - self.dilation[1] * (self.kernel_size[1] - 1) - 1) /
-            self.stride[1] + 1)
+            self.stride[1] + 1
+        )
         return int(output_h), int(output_w)
 
     def forward(self, batch):
         # TODO: Consider the out_channels and the in_channels
         logging.info("Starting forward!")
+
+        if self.input_shape != batch.shape:
+            self._update_lolif(batch)
+
         if self.use_gpu:
-            res = _foward_cuda(batch)
+            res = self._forward_cuda(batch)
+            torch.cuda.empty_cache()
         else:
-            res = _forward_with_cpu(batch)
+            res = self._forward_with_cpu(batch)
         
         return res
+
+    def _update_lolif(self, batch):
+        # Prepare lowering object
+        self.input_shape = batch.shape
+        if self.lowering.type == LoLifType.SINGLE:
+            self.lolif = self.lowering(
+                    batch.shape[2:4],
+                    self.weight.shape[2:4],
+                    use_gpu = self.use_gpu,
+                    gpu_blockdim = self.gpu_blockdim,
+                    gpu_griddim = self.gpu_griddim
+            )
+        else: #if lowering.type == LoLifType.CHANNELED:
+            assert False, "Channeled are not supported yet."
+            self.lolif = self.lowering(
+                    batch.shape[1:4], 
+                    self.weight.shape, # TODO generalize the type!
+            )
+
+        # Instantiate the lowered weights object
+        if self.use_gpu:
+            self.weights = cuda.device_array((
+                self.out_channels, 
+                self.in_channels, 
+                *self.lolif.lowered_kernel_shape
+            ), dtype = np.float32)
+        else:
+            self.weights = torch.zeros((
+                self.out_channels, 
+                self.in_channels,
+                *self.lolif.lowered_kernel_shape
+            ))
+    
+        for c_out in range(self.out_channels):
+            for c_in in range(self.in_channels):
+                if self.use_gpu:
+                    self.lolif.lower_kernel_cuda(
+                        self.weights[c_out, c_in],
+                        numba.cuda.as_cuda_array(
+                            self.weight[c_out, c_in].detach()
+                        )
+                    )
+                else:
+                    self.weights[c_out, c_in] = self.lolif.lower_kernel_cpu(
+                        self.weight[c_out, c_in]
+                    )
+
+    def _forward_cuda(self, batch):
+        # insert padding
+        batch = torch.nn.functional.pad(
+                batch, [
+                    self.padding[0], self.padding[0],
+                    self.padding[1], self.padding[1],
+                ]
+            )
+
+        # correct_conv = torch.nn.functional.conv2d(batch, self.weight, self.bias)
+
+        # Cuda conversion CAI
+        batch = cuda.as_cuda_array(batch.detach())
+        out_shape = self._get_out_shape(batch.shape[2], batch.shape[3])
+        assert len(batch.shape) == 4, "Cannot process unbatched inputs!"
+
+        batch_size = batch.shape[0]
+        result = torch.zeros(
+            (batch_size, self.out_channels, *out_shape), 
+            dtype=torch.float32, device="cuda") + self.bias.view((1, self.out_channels, 1, 1)) #resulting tensor
+        result = cuda.as_cuda_array(result)
+
+        lowered_result = cuda.device_array((self.lolif.lowered_activation_shape[0], self.lolif.lowered_kernel_shape[1]), dtype=result.dtype) 
+        for idx in trange(0, batch_size, leave=False, dynamic_ncols=True,
+                         desc=f"[SystolicConv2d] batched {'injected' if self.injecting >= 1 else ''}"
+                         ):
+            for c_out in range(self.out_channels):
+                for c_in in range(self.in_channels):
+                    lowered_act = self.lolif.lower_activation(batch[idx, c_in])
+                    self.hw.matmul_legacy_cuda_tiled(lowered_result, lowered_act, self.weights[c_out, c_in])
+                    self.lolif.lift_cuda(result[idx, c_out], lowered_result,  additive=True)
+
+        result = torch.as_tensor(result, device="cuda")
+
+        # if not torch.allclose(correct_conv, result, rtol=0.01):
+        #     torch.save(torch.tensor(batch), "batch.pt")
+        #     torch.save(self.weight, "wegith.pt")
+        #     torch.save(self.bias, "bias.pt")
+        #     torch.save(correct_conv, "correct_conv.pt")
+        #     torch.save(result, "computed_conv.pt")
+        #     assert False, f"Uh la la! Seems like there is something shady going on with SystolicConv2d!" # \ncorrect:\n{correct_conv}\ncomputed:\n{result}"
+
+        return result
 
     def _forward_with_cpu(self, input):
         '''
@@ -343,7 +504,6 @@ class SystolicConv2d(nn.Conv2d):
                 # ############## END DEBUGGING STUFF """
 
         return result
-
 
 
 ######### Soon to be depracated #############################################################

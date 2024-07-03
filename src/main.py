@@ -10,7 +10,6 @@ import torch.nn.functional as F
 from torchvision.transforms import v2
 
 import logging
-import saffira.gpu
 import numpy as np
 from tqdm.auto import tqdm
 from timeit import timeit
@@ -31,9 +30,7 @@ if __name__ == "__main__":
             self.fc3 = nn.Linear(84, 10)
 
         def forward(self, x):
-            x.to("cpu")
-            x = self.conv1(x).to("cpu")
-            
+            x = self.conv1(x)
             x = self.pool(F.relu(x))
             x = self.pool(F.relu(self.conv2(x)))
             x = torch.flatten(x, 1) # flatten all dimensions except batch
@@ -252,5 +249,69 @@ def physical_space():
     plt.scatter(pes[:, 0], pes[:, 1])
     plt.show()
 
+def staminchia():
+    model = torch.load("best_model", map_location="cuda",)
+    # model.get_submodule("conv1").register_forward_hook(hook)
+    model.eval()
+    
+    pil_to_tensor = tv.transforms.Compose([ # SOOO, WHAT ABOUT v2?
+        v2.ToImage(),
+        v2.ToDtype(torch.float32, scale=True),
+    ]) 
+
+    mnist_test = tv.datasets.MNIST(".", download=True, train=False, transform=pil_to_tensor)
+    validation_loader = torch.utils.data.DataLoader(mnist_test, batch_size = 128, shuffle=False, num_workers=4, pin_memory=True)
+
+    tot = 0
+    correct = 0
+    i=0
+    with torch.no_grad():
+        for img in tqdm(validation_loader):
+            inputs, labels = img
+            outputs = model(inputs.to("cuda"))
+            tot += len(labels)
+            correct += (outputs.argmax(1) == labels.to("cuda")).float().sum()
+            # if i==1:
+            #     break
+            i+=1
+        golden_acc = correct / tot
+    print("model accuracy is ", golden_acc.item()*100)
+
+    hw = flauers.SystolicArray(
+        30, 30, 300, 
+        flauers.projection_matrices.output_stationary,
+        in_dtype=np.float32,
+        mac_dtype=np.float32,
+        use_gpu = True
+        )
+    compatible = flauers.torch.compatible_layers(model)
+    print(compatible)
+    flauers.torch.replace_layers(model, compatible, device="cuda", hardware = hw, tiling = True)
+    model.eval()
+    # model.get_submodule("conv1").register_forward_hook(hook_systolic)
+
+    tot = 0
+    correct = 0
+    i = 0
+    with torch.no_grad():
+        for img in tqdm(validation_loader):
+            inputs, labels = img
+            outputs = model(inputs.to("cuda"))
+            tot += len(labels)
+            correct += (outputs.argmax(1) == labels.to("cuda")).float().sum()
+            # if i==1:
+            #     break
+            i+=1
+        systolic_acc = correct / tot
+    print("systolic model accuracy is ", systolic_acc.item()*100)
+
 if __name__ == "__main__":
-    lenet_test()
+    staminchia()
+    exit(0)
+    t0 = np.array(torch.load("tensor0").cpu())
+    t0_sys = np.array(torch.load("tensor_sys0").cpu())
+    for i in range(128):
+        for j in range(6):
+            for k in range(24):
+                if (t0_sys[i, j, k] != 0).any(): 
+                    print(f"{i}, {j}, {k}")

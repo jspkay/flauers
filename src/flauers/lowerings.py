@@ -1,6 +1,10 @@
 import numpy as np
 import logging
 from enum import Enum
+import numba.cuda
+
+if numba.cuda.is_available():
+    from . import cuda # This is the local cuda
 
 from . import utils
 
@@ -99,12 +103,19 @@ class LoLif:  # Lowering-Lifting class
     CHANNEL = None
     BATCH = None
 
+    type = None 
+
     def __init__(self,
                  activation_shape: tuple,
                  kernel_shape: tuple,
                  stride_x: int = 1,
                  stride_y: int = 1,
-                 lolif_type: LoLifType = LoLifType.SINGLE
+                 lolif_type: LoLifType = LoLifType.SINGLE,
+                 use_gpu: bool = False,
+                 lowered_gpu_dtype = None,
+                 lifted_gpu_dtype = None,
+                 gpu_griddim = 64,
+                 gpu_blockdim = 128,
                  ):
         logging.info("[LowLif super-class] initialization...")
 
@@ -112,6 +123,7 @@ class LoLif:  # Lowering-Lifting class
         # TODO: Generalize the algorithm for any shape of matrices
         _check_shape(activation_shape, lolif_type)
         _check_shape(kernel_shape, lolif_type)
+        self.type = lolif_type
 
         logging.debug(f"[LoLif super-class] setting type to {lolif_type.name}")
         self._set_indices(lolif_type)
@@ -146,6 +158,12 @@ class LoLif:  # Lowering-Lifting class
         logging.debug(f"[LowLif super-class] output shape for a single output is {self.lifted_output_shape}.")
 
         logging.info(f"[LoLif super-class] initialization done")
+
+        self.use_gpu = use_gpu
+        self.lowered_dtype = lowered_gpu_dtype
+        self.lifted_dtype = lifted_gpu_dtype
+        self.gpu_blockdim = gpu_blockdim
+        self.gpu_griddim = gpu_griddim
 
     """
     Maybe we can have these methods... I dunno
@@ -194,8 +212,10 @@ class LoLif:  # Lowering-Lifting class
 
 class S_Im2Col(LoLif):
 
-    def __init__(self, activation_shape, kernel_shape):
-        super().__init__(activation_shape, kernel_shape, lolif_type=LoLifType.SINGLE)
+    type = LoLifType.SINGLE
+
+    def __init__(self, activation_shape, kernel_shape, *args, **kwargs):
+        super().__init__(activation_shape, kernel_shape, *args, lolif_type=LoLifType.SINGLE, **kwargs)
 
         m = self.kernel_size * self.activation_size
         self.lowered_activation_shape = (self.output_size, m)
@@ -212,33 +232,63 @@ class S_Im2Col(LoLif):
         logging.info(f"[S_Im2Col] starting lowering_activation")
         _check_tensor_against_shape(activation, self.activation_shape)
 
-        if not isinstance(activation, np.ndarray):
+        if not isinstance(activation, np.ndarray) and not hasattr(activation, "__cuda_array_interface__"):
             logging.warning(f"[S_Im2Col] the argument object activation is not instance of numpy.ndarray. This can "
                             f"cause problems with the computation.")
             activation = np.array(activation)  # Convert to numpy array
 
-        result = np.zeros(self.lowered_activation_shape, dtype=activation.dtype)  # Prepare output
+        res = None
+        if self.use_gpu:
+            res = numba.cuda.device_array((self.lowered_activation_shape), dtype=activation.dtype)
+            self.lower_activation_cuda(res, activation, additive=False)
+        else:
+            res = self.lower_activation_cpu(activation)
 
-        for r in range(self.output_size):
-            result[r, :] = activation[r:r+self.kernel_size, :].flatten("F")
-
-        logging.debug(f"lowered_activation: \n{result}")
-
+        logging.debug(f"lowered_activation: \n{res}")
         logging.info(f"[S_Im2Col] lowering_activation done")
-
-        del activation, r
-
-        return result
+        return res
 
     def lower_kernel(self, kernel):
-        # Stack all unfolded kernels row by row
+        # Stack all flattened kernels row by row
 
-        if not isinstance(kernel, np.ndarray):
+        if not isinstance(kernel, np.ndarray) and not hasattr(kernel, "__cuda_array_interface__"):
             logging.warning(f"[S_Im2Col] the argument object kernel is not instance of numpy.ndarray. This can "
                             f"cause problems with the computation.")
             kernel = np.array(kernel)
 
         logging.info(f"[S_Im2Col] starting lowering_kernel")
+
+        res = None
+        if self.use_gpu:
+            res = numba.cuda.device_array((self.lowered_kernel_shape), dtype=kernel.dtype)
+            self.lower_kernel_cuda(res, kernel, additive=False)
+        else:
+            res = self.lower_kernel_cpu(kernel)
+
+        logging.debug(f"lowered_kernel: \n{res}")
+
+        logging.info(f"[S_Im2Col] lowering_kernel done")
+        return res
+
+
+    def lift(self, o: np.ndarray):
+        res = None
+        if self.use_gpu:
+            res = numba.cuda.device_array((self.lifted_output_shape), dtype=o.dtype)
+            self.lift_cuda(res, o)
+        else:
+            res = o.reshape((self.output_size, self.output_size), order="C")
+        return res
+
+    ##### Python (cpu) ########
+    def lower_activation_cpu(self, activation):
+        result = np.zeros(self.lowered_activation_shape, dtype=activation.dtype)  # Prepare output
+        for r in range(self.output_size):
+            result[r, :] = activation[r:r+self.kernel_size, :].flatten("F")
+        del activation, r
+        return result
+
+    def lower_kernel_cpu(self, kernel):
         output = np.zeros(self.lowered_kernel_shape, dtype=kernel.dtype)
         col = kernel.flatten("F")
         l = self.kernel_size
@@ -248,21 +298,25 @@ class S_Im2Col(LoLif):
             output[s:s+m, c] = col
 
         del col, l, m, kernel
-
-        logging.debug(f"lowered_kernel: \n{output}")
-
-        logging.info(f"[S_Im2Col] lowering_kernel done")
         return output
 
-    def lift(self, o: np.ndarray):
-        return o.reshape((self.output_size, self.output_size), order="C")
-
+    ##### CUDA ########
+    def lower_activation_cuda(self, result, activation, additive: bool=False):
+        cuda.lowerings.S_Im2Col_lower_activation[self.gpu_griddim,self.gpu_blockdim](result, activation, self.kernel_size, additive)
+        return result
+    def lower_kernel_cuda(self, result, kernel, additive=False):
+        cuda.lowerings.S_Im2Col_lower_kernel[self.gpu_griddim,self.gpu_blockdim](result, kernel, self.kernel_size, additive)
+        return result
+    def lift_cuda(self, result, lowered_result, additive=False):
+        cuda.lowerings.S_Im2Col_lift[self.gpu_griddim, self.gpu_blockdim](result, lowered_result, additive)
+        return result
 
 class C_SlimKernel(LoLif):
     """
     This class implements an expensive lowering whose kernel becomes _slim_. This is because the kernels
     are flattened and then concatenated together, so the lowered kernel will only have 1 column
     """
+    type = LoLifType.CHANNELED
 
     def __init__(self, activation_shape, kernel_shape):
         super().__init__(activation_shape, kernel_shape, lolif_type=LoLifType.CHANNELED)

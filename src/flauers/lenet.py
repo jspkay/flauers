@@ -14,7 +14,6 @@ class LeNet(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        
         x = self.pool(F.relu(x))
         x = self.pool(F.relu(self.conv2(x)))
         x = torch.flatten(x, 1) # flatten all dimensions except batch

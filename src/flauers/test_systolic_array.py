@@ -42,6 +42,49 @@ class TestSystolicArray(unittest.TestCase):
 
                     self.assertTrue( np.allclose(C, Cok) )
 
+    def test_instantiation_gpu(self):
+        iterator = itertools.product(
+            range(1, 12), range(1, 12), range(1, 12)
+        )
+
+        matrices = [
+            flauers.projection_matrices.output_stationary,
+            flauers.projection_matrices.row_stationary,
+            flauers.projection_matrices.col_stationary,
+            flauers.projection_matrices.no_local_reuse,
+            flauers.projection_matrices.row_stationary_eq,
+            flauers.projection_matrices.col_stationary_eq
+        ]
+
+        for _ in range(1):
+            for matrix in matrices:
+                for N1, N2, N3 in iterator:
+                    A = (np.random.random((N1, N3)) * 1e9).astype(np.float32)
+                    B = (np.random.random((N3, N2)) * 1e9).astype(np.float32)
+                    array = flauers.SystolicArray(
+                        N1, N2, N3,
+                        matrix,
+                        in_dtype = np.float32,
+                        use_gpu=True,
+                    )
+
+                    Cok = A.astype(np.float32) @ B.astype(np.float32)
+
+                    A = cuda.to_device(A)
+                    B = cuda.to_device(B)
+                    print(N1, N2, N3)
+                    C = array.matmul(A, B, tiling=True)
+
+                    self.assertTrue( np.allclose(C, Cok),
+                    msg=f"projection matrix is\n{matrix}\n"
+                        f"A is\n{A.copy_to_host()}\n"
+                        f"B is\n{B.copy_to_host()}\n"
+                        f"C is\n{C.copy_to_host()}\n"
+                        f"Cok is\n{Cok}"
+                        )
+
+                    del A, B, C, Cok
+
 
 class TestSystolicArrayOSInjections(unittest.TestCase):
 
@@ -245,7 +288,7 @@ class TestSystolicArrayOSInjectionsCuda(unittest.TestCase):
 
             self.hw.add_fault(f)
 
-            C = self.hw.matmul_legacy_cuda(self.A, self.B)
+            C = self.hw.matmul_cuda(self.A, self.B)
 
             """
             When we perform this injection, we have a different value in register c.

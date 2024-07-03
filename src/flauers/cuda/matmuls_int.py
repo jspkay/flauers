@@ -28,6 +28,7 @@ def inject_int8(value, bitstring, injection_type):
 
 @cuda.jit("int32(int32, int32, int8)", device=True, inline=True)
 def inject_int32(value, bitstring, injection_type):
+
     if injection_type == 0:
         res = value & ~bitstring
     elif injection_type == 1:
@@ -40,11 +41,12 @@ def inject_int32(value, bitstring, injection_type):
     return res
 
     
-@cuda.jit
-def injected_matmul_old_int32(
+@cuda.jit( "void(int8[:,:], int8[:,:], int32[:,:],"
+            "int8[:,:,:], int8[:,:,:], int8[:,:,:], int8, boolean)")
+def injected_matmul_old_int8(
         A, B, C, 
         inject_A, inject_B, inject_C,
-        injection_type
+        injection_type, additive
 ):
     start = cuda.grid(2)
     stride = cuda.gridsize(2)
@@ -61,8 +63,10 @@ def injected_matmul_old_int32(
                 a_value = inject_int8( A[i, k], inject_A[i, j, k], injection_type)
                 b_value = inject_int8( B[k, j], inject_B[i, j, k], injection_type)
 
-                c_tmp += a_value*b_value
+                c_tmp += np.int32(a_value) * np.int32(b_value)
 
                 c_tmp = inject_int32(c_tmp, inject_C[i, j, k], injection_type)
-
-            C[i, j] += c_tmp
+            if additive:
+                C[i, j] += c_tmp
+            else:
+                C[i, j]  = c_tmp
