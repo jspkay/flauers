@@ -353,9 +353,12 @@ class SystolicConv2d(nn.Conv2d):
         assert len(batch.shape) == 4, "Cannot process unbatched inputs!"
 
         batch_size = batch.shape[0]
-        result = torch.zeros(
-            (batch_size, self.out_channels, *out_shape), 
-            dtype=torch.float32, device="cuda") + self.bias.view((1, self.out_channels, 1, 1)) #resulting tensor
+        result = torch.zeros( 
+                    (batch_size, self.out_channels, *out_shape),  
+                    dtype=torch.float32, device="cuda"
+                ) 
+        if self.bias is not None:
+            result += self.bias.view((1, self.out_channels, 1, 1)) #resulting tensor
         result = cuda.as_cuda_array(result)
 
         lowered_result = cuda.device_array((self.lolif.lowered_activation_shape[0], self.lolif.lowered_kernel_shape[1]), dtype=result.dtype) 
@@ -474,12 +477,19 @@ class SystolicConv2d(nn.Conv2d):
                     # convolution = convolve2d(a, b, mode="valid")
 
                 else: # if self.channel_fault_list[0][0] == -1 or self.channel_fault_list[0][0] == c_out:
+                    lolif = lowerings.S_Im2Col(a.shape, b.shape)
+                    low_a = lolif.lower_activation(a)
+                    low_b = lolif.lower_kernel(b)
+                    x = self.hw.matmul_cpu(low_a, low_b)
+                    convolution = lolif.lift(x)
+
+                    """ OLD
                     convolution = convolve_with_array(
                         a, b,
                         lowering=lowerings.S_Im2Col,
                         array=self.hw,
                         tiling=self.tiling,
-                    )
+                    ) """
 
                 result[c_out] += convolution
 
