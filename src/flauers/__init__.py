@@ -131,6 +131,6 @@ def matmul(A, B,
     if N3 == -1:
         N3 = B.shape[0]
 
-    hw = SystolicArray(N1, N2, N3, projection_matrix, use_gpu, **kwargs)
+    hw = SystolicArray(N1, N2, N3, projection_matrix, use_gpu=use_gpu, **kwargs)
     return hw.matmul(A, B, tiling=tiling)
 
