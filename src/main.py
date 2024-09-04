@@ -305,8 +305,32 @@ def staminchia():
         systolic_acc = correct / tot
     print("systolic model accuracy is ", systolic_acc.item()*100)
 
+def validation():
+    i = 167
+
+    f = open(f"src/random/random_A_{i}", "rb").read()
+    A = np.frombuffer(f, np.int8 ).reshape((8,8))
+    f = open(f"src/random/random_B_{i}", "rb").read()
+    B = np.frombuffer(f, np.int8 ).reshape((8,8))
+
+    print("A", A)
+    print("")
+    print("B", B)
+    print("")
+
+
+    hw = flauers.SystolicArray(4, 4, 10000, flauers.projection_matrices.output_stationary, in_dtype=np.int8, mac_dtype=np.int32)
+    hw.add_fault(
+        flauers.fault_models.StuckAt(line = "a", x = 1, y = 3, bit=5, polarity=1, msb="last")
+    )
+    C = hw.matmul(A, B, tiling=True)
+    Cok = A.astype(np.int32) @ B.astype(np.int32)
+    print(C)
+    print(C == Cok)
+    # print(A.astype(np.int32) @ B.astype(np.int32))
+
 if __name__ == "__main__":
-    staminchia()
+    validation()
     exit(0)
     t0 = np.array(torch.load("tensor0").cpu())
     t0_sys = np.array(torch.load("tensor_sys0").cpu())

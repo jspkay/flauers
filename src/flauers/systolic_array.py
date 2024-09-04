@@ -95,6 +95,7 @@ class SystolicArray:
         # to map the iteartion space to the physical space and we will have a list of iterative points (i, j, k)
         # associated to the physical points (x, y).
         self._iter_to_phy()
+        self.physical_PEs = self.space_projection()
 
 		# This is the basic formula that says the time for a single computation is (1 + t_max - t_min) where t_min
 		# and t_max are the extremes of the set of time points computed as pi * nu (pi is the time-projection vector
