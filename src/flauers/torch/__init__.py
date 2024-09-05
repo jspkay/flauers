@@ -16,7 +16,7 @@ from tqdm.autonotebook import tqdm, trange
 import concurrent.futures as futures
 import numba
 import numba.cuda as cuda
-from numba_progress import ProgressBar
+# from numba_progress import ProgressBar
 
 ############### Helper functions ####################
 
