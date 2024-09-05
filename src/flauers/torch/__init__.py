@@ -147,7 +147,7 @@ class SystolicLinear(nn.Linear):
         batch_size = fmap.shape[0]
 
         if self.use_gpu:
-            result = torch.zeros((batch_size, self.out_features), device="cuda") + self.bias
+            result = torch.zeros((batch_size, self.out_features), device="cuda")
             result = cuda.as_cuda_array(result)
             if self.tiling:
                 part = self.hw.matmul_legacy_cuda_tiled(
@@ -161,7 +161,7 @@ class SystolicLinear(nn.Linear):
                             cuda.as_cuda_array(fmap.detach()),
                             cuda.as_cuda_array(self.weight.detach()),
                         )
-            result = torch.as_tensor(result, device="cuda")
+            result = torch.as_tensor(result, device="cuda") + self.bias
         else:
             result = torch.zeros((batch_size, self.out_features), device = "cpu")
             if self.tiling:
@@ -295,7 +295,10 @@ class SystolicConv2d(nn.Conv2d):
         self.input_shape = batch.shape
         if self.lowering.type == LoLifType.SINGLE:
             self.lolif = self.lowering(
-                    batch.shape[2:4],
+                    (
+                        batch.shape[2] + 2*self.padding[0], 
+                        batch.shape[3] + 2*self.padding[1]
+                    ),
                     self.weight.shape[2:4],
                     use_gpu = self.use_gpu,
                     gpu_blockdim = self.gpu_blockdim,
@@ -337,6 +340,8 @@ class SystolicConv2d(nn.Conv2d):
                     )
 
     def _forward_cuda(self, batch):
+        out_shape = self._get_out_shape(batch.shape[2], batch.shape[3])
+
         # insert padding
         batch = torch.nn.functional.pad(
                 batch, [
@@ -349,7 +354,6 @@ class SystolicConv2d(nn.Conv2d):
 
         # Cuda conversion CAI
         batch = cuda.as_cuda_array(batch.detach())
-        out_shape = self._get_out_shape(batch.shape[2], batch.shape[3])
         assert len(batch.shape) == 4, "Cannot process unbatched inputs!"
 
         batch_size = batch.shape[0]

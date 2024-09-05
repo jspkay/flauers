@@ -270,6 +270,8 @@ if cuda.is_available():
 
     class TestMatmulsFloat32(unittest.TestCase):
 
+
+
         def test_float32_noinjection(self):
             N1 = 10
             N2 = 10
@@ -278,6 +280,7 @@ if cuda.is_available():
             scale = 100
             
             for intype in [0, 1, 2]:
+
                 ina = np.zeros((N1, N2, N3), dtype = np.int32)
                 inb = ina
                 inc = ina
@@ -294,7 +297,15 @@ if cuda.is_available():
                 Cok = A @ B
 
                 C = np.zeros((N1, N2), dtype=np.float32)
-                matmuls_float.injected_matmul_old_float32[N1, N2](
+                
+                ina = cuda.to_device(ina)
+                inb = cuda.to_device(inb)
+                inc = cuda.to_device(inc)
+                # intype = cuda.to_device(intype)
+                A = cuda.to_device(A)
+                B = cuda.to_device(B)
+                C = cuda.to_device(C)
+                matmuls_float.injected_matmul_old_float32[32, 8](
                     A, B, C,
                     ina, inb, inc,
                     intype

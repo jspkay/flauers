@@ -37,12 +37,17 @@ class TestTorch(unittest.TestCase):
         flauer_layer = flauers.torch.SystolicLinear(32, 10, tiling=False, device="cuda")
 
         torch_correct.weight = torch.nn.Parameter(
-                                   torch.ones((32, 10), device="cuda"))
-        flauer_layer.load_weights( torch.ones((32,10), device="cuda") )
-        torch_correct.bias = torch.nn.Parameter(torch.ones(10, device="cuda"))
-        flauer_layer.bias = torch.nn.Parameter(torch.ones(10, device="cuda"))
+                                   torch.ones((10, 32), device="cuda")
+                                   )
+        flauer_layer.load_weights( 
+            torch.ones((10,32), device="cuda") 
+            )
 
-        A = torch.ones((32), device="cuda")
+        bias = 3 * torch.ones(10, device="cuda")
+        torch_correct.bias = torch.nn.Parameter(bias)
+        flauer_layer.bias = torch.nn.Parameter(bias)
+
+        A = torch.ones((1, 32), device="cuda")
         with torch.no_grad():
             B = flauer_layer(A)
             Bok = torch_correct(A)
