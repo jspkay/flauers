@@ -12,8 +12,6 @@ import logging
 SystolicArray = systolic_array.SystolicArray
 ProjectionMatrices = projection_matrices
 
-__version__ = "0.9.9"
-
 logger = logging.getLogger(__name__)
 
 def convolve_with_array(A: np.ndarray, B: np.ndarray,

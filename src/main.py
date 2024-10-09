@@ -1,3 +1,8 @@
+import sys
+sys.path.append("..")
+
+print(sys)
+
 import flauers as si
 import flauers.torch
 si.torch = flauers.torch
@@ -341,7 +346,7 @@ def validation():
     # print(A.astype(np.int32) @ B.astype(np.int32))
 
 if __name__ == "__main__":
-    validation()
+    staminchia()
     exit(0)
     t0 = np.array(torch.load("tensor0").cpu())
     t0_sys = np.array(torch.load("tensor_sys0").cpu())

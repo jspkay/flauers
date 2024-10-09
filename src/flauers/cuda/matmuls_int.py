@@ -42,7 +42,7 @@ def inject_int32(value, bitstring, injection_type):
 
     
 @cuda.jit( "void(int8[:,:], int8[:,:], int32[:,:],"
-            "int8[:,:,:], int8[:,:,:], int8[:,:,:], int8, boolean)")
+            "int8[:,:,:], int8[:,:,:], int32[:,:,:], int8, boolean)")
 def injected_matmul_old_int8(
         A, B, C, 
         inject_A, inject_B, inject_C,
@@ -52,13 +52,13 @@ def injected_matmul_old_int8(
     stride = cuda.gridsize(2)
 
     n1 = A.shape[0]
-    n2 = A.shape[1]
-    n3 = B.shape[1]
+    n2 = B.shape[1]
+    krange = A.shape[1]
 
     for i in range(start[0], n1, stride[0]):
         for j in range(start[1], n2, stride[1]):
             c_tmp = 0
-            for k in range(n3):
+            for k in range(krange):
 
                 a_value = inject_int8( A[i, k], inject_A[i, j, k], injection_type)
                 b_value = inject_int8( B[k, j], inject_B[i, j, k], injection_type)
