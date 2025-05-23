@@ -203,7 +203,7 @@ class SystolicArray:
             res = self.matmul_legacy_cpu_tiled(A, B)
         elif self.use_legacy is False:
             raise NotImplementedError("This feature has not yet been implemented. You can't have use_legacy=False")
-            matmul = self._matmul_new
+            # res = self._matmul_new(A, B)
 
         return res
         
