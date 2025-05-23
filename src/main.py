@@ -1,3 +1,8 @@
+import sys
+sys.path.append("..")
+
+print(sys)
+
 import flauers as si
 import flauers.torch
 si.torch = flauers.torch
@@ -13,6 +18,7 @@ import logging
 import numpy as np
 from tqdm.auto import tqdm
 from timeit import timeit
+import random
 
 # logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
@@ -271,39 +277,49 @@ def staminchia():
             outputs = model(inputs.to("cuda"))
             tot += len(labels)
             correct += (outputs.argmax(1) == labels.to("cuda")).float().sum()
-            # if i==1:
-            #     break
+            if i==1:
+                break
             i+=1
         golden_acc = correct / tot
     print("model accuracy is ", golden_acc.item()*100)
 
     hw = flauers.SystolicArray(
-        30, 30, 300, 
-        flauers.projection_matrices.output_stationary,
+        28, 28, 28, 
+        flauers.projection_matrices.col_stationary,
         in_dtype=np.float32,
         mac_dtype=np.float32,
-        use_gpu = True
+        use_gpu = True,
+        gpu_blockdim = 128,
+        gpu_griddim=256,
         )
     compatible = flauers.torch.compatible_layers(model)
     print(compatible)
-    flauers.torch.replace_layers(model, compatible, device="cuda", hardware = hw, tiling = True)
+    flauers.torch.replace_layers(model, "conv1", device="cuda", deeper_faults=True,
+        hardware = hw, tiling = True, gpu_blockdim=128, gpu_griddim=256)
     model.eval()
     # model.get_submodule("conv1").register_forward_hook(hook_systolic)
 
-    tot = 0
-    correct = 0
-    i = 0
-    with torch.no_grad():
-        for img in tqdm(validation_loader):
-            inputs, labels = img
-            outputs = model(inputs.to("cuda"))
-            tot += len(labels)
-            correct += (outputs.argmax(1) == labels.to("cuda")).float().sum()
-            # if i==1:
-            #     break
-            i+=1
-        systolic_acc = correct / tot
-    print("systolic model accuracy is ", systolic_acc.item()*100)
+    for fno in range(10):
+        x, y = random.choice( hw.space_projection() )
+        f = flauers.fault_models.StuckAt(line="a", x=x, y=y, bit=21, polarity=1)
+
+        hw.clear_all_faults()
+        hw.add_fault(f)
+
+        tot = 0
+        correct = 0
+        i = 0
+        with torch.no_grad():
+            for img in tqdm(validation_loader):
+                inputs, labels = img
+                outputs = model(inputs.to("cuda"))
+                tot += len(labels)
+                correct += (outputs.argmax(1) == labels.to("cuda")).float().sum()
+                # if i==1:
+                #     break
+                i+=1
+            systolic_acc = correct / tot
+        print("systolic model accuracy is ", systolic_acc.item()*100)
 
 def validation():
     i = 167
@@ -330,7 +346,7 @@ def validation():
     # print(A.astype(np.int32) @ B.astype(np.int32))
 
 if __name__ == "__main__":
-    validation()
+    staminchia()
     exit(0)
     t0 = np.array(torch.load("tensor0").cpu())
     t0_sys = np.array(torch.load("tensor_sys0").cpu())

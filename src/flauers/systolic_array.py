@@ -291,8 +291,13 @@ class SystolicArray:
 
     def matmul_legacy_cuda_tiled(self, C, A, B):
         cuda.utils.zero_init_matrix[self.gpu_griddim,self.gpu_blockdim](C)
+        i_old = -1
+        j_old = -1
+        stream = None
         for i, j, k in Tiling(A.shape, B.shape, self.N1, self.N2, self.N3):
-            self.cuda_matmul_kernel[self.gpu_griddim,self.gpu_blockdim](
+            if i != i_old and j != j_old:
+                stream = numba.cuda.stream()
+            self.cuda_matmul_kernel[self.gpu_griddim,self.gpu_blockdim, stream](
                 A[i:i+self.N1, k:k+self.N3],
                 B[k:k+self.N3, j:j+self.N2],
                 C[i:i+self.N1, j:j+self.N2],
@@ -300,6 +305,8 @@ class SystolicArray:
                 self.injection_a_type,
                 True  # additive argument
             )
+            i_old = i
+            j_old = j
         return C
 
     def _update_parameters_cuda(self):
@@ -377,15 +384,18 @@ class SystolicArray:
         self._preperare_injection_parameters()
         self.should_inject = False
 
-        nbits = self.in_dtype.itemsize*8
-        self.injection_a = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
-        self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
-        self.injection_c = np.zeros((self.N1, self.N2, self.N3),
-                    dtype=f"int{nbits}" if self.in_dtype.kind=="f" else f"int{nbits*4}")
-        self.injection_a_type = np.int8(0)
-        
-        if self.use_gpu:
-            self._update_parameters_cuda()
+        if not self.use_gpu:
+            nbits = self.in_dtype.itemsize*8
+            self.injection_a = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
+            self.injection_b = np.zeros((self.N1, self.N2, self.N3), dtype=f"int{nbits}")
+            self.injection_c = np.zeros((self.N1, self.N2, self.N3),
+                        dtype=f"int{nbits}" if self.in_dtype.kind=="f" else f"int{nbits*4}")
+            self.injection_a_type = np.int8(0)
+        else:
+            cuda.utils.zero_init_3dtensor[self.gpu_griddim, self.gpu_blockdim](self.injection_a)
+            cuda.utils.zero_init_3dtensor[self.gpu_griddim, self.gpu_blockdim](self.injection_b)
+            cuda.utils.zero_init_3dtensor[self.gpu_griddim, self.gpu_blockdim](self.injection_c)
+            self.injection_a_type &= 0
 
     def clear_single_fault(self, id):
         if self.use_legacy and self.optimized:
@@ -483,7 +493,6 @@ class SystolicArray:
         from pprint import pprint
         # pprint(self._line_faults)
         
-
         # This is for _matmul_new
         injected_points_list = defaultdict(dict)
         T_det = round(np.linalg.det(self.T))
@@ -504,12 +513,11 @@ class SystolicArray:
                 # TODO: Refactor injected_points_list to have min-max ranges associated to the faults!
                 while t <= t_stop and t <= self.computation_time:  # Then we compute all the points jumping of T_det
                     i, j, k = (T_inv @ np.array([x, y, t]) - indexed_conversion).astype(dtype=np.int32)
-
                     # this is for _matmul_old_opt
                     nbits = self.in_dtype.itemsize*8
                     shift = fault.bit if not fault.should_reverse_bits else nbits-fault.bit-1
                     # ! WE WANT TO CONVERT (i, j, k) to zero-indexed values! So we decrement by 1
-                    if i < self.N1 and j < self.N2 and k < self.N3:
+                    if 0 <= i < self.N1 and 0 <= j < self.N2 and 0 <= k < self.N3:
                         if fault.line == LineType.a:
                             self.injection_a[i, j, k] |= 1 << shift
                         elif fault.line == LineType.b:
