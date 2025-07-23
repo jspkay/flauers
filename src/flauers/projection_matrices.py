@@ -12,36 +12,43 @@ output_stationary = np.array(
         [1, 1, 1]
     ]
 )
+output_stationary_eq = np.array(
+    [
+        [-1,  0, 0],
+        [ 0, -1, 0],
+        [ 1,  1, 1]
+    ]
+)
 
 # a is the stationary variable
 row_stationary = np.array(
     [
         [1, 0,  0],
-        [0,  0, -1],
-        [1,  1, 1]
+        [0, 0, -1],
+        [1, 1,  1]
     ]
 )
 row_stationary_eq = np.array(
     [
-        [-1, 0,  0],
-        [0,  0, 1],
-        [1,  1, 1]
+        [-1, 0, 0],
+        [ 0, 0, 1],
+        [ 1, 1, 1]
     ]
 )
 
 # b is the stationary variable
 col_stationary = np.array(
     [
-        [0, 0,  1],
-        [1,  0, 0],
+        [0,  0, 1],
+        [0, -1, 0],
         [1,  1, 1]
     ]
 )
 col_stationary_eq = np.array(
     [
-        [0, 0,  -1],
-        [-1,  0, 0],
-        [1,  1, 1]
+        [0, 0, -1],
+        [0, 1,  0],
+        [1, 1,  1]
     ]
 )
 
