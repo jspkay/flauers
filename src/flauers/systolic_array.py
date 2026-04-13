@@ -148,10 +148,12 @@ class SystolicArray:
         if not isinstance(B, np.ndarray) and not hasattr(B, "__cuda_array_interface__"):
             logging.warning(f"[SystolicArray] Matrix B is not instance of numpy.ndarray. This may cause problems")
 
+        print(f"A.dtype is {A.dtype}, in_dtype is {self.in_dtype}")
+
         if A.dtype != self.in_dtype or B.dtype != self.in_dtype:
             logging.warning(f"[SystolicArray] The dtype of the input does not match the dtype specified in the costructor!")
             if self.use_gpu:
-                raise WrongDtypeError
+                raise WrongDtypeError(f"[SystolicArray] The dtype of the input does not match the dtype specified in the costructor!")
             logging.warning(f"[SystolicArray] Using the cpu will result in an implicit cast.")
 
         logging.info(f"[SystolicArray] checking all the requirements")
@@ -303,7 +305,7 @@ class SystolicArray:
                 C[i:i+self.N1, j:j+self.N2],
                 self.injection_a, self.injection_b, self.injection_c,
                 self.injection_a_type,
-                True  # additive argument
+                True,  # additive argument
             )
             i_old = i
             j_old = j
